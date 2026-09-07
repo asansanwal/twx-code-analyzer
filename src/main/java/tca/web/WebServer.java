@@ -35,6 +35,8 @@ public class WebServer {
         public String header(String name) { return x.getRequestHeaders().getFirst(name); }
         public String cookie(String name) { List<String> hs = x.getRequestHeaders().get("Cookie"); if (hs != null) for (String h : hs) for (String c : h.split(";")) { int i = c.indexOf('='); if (i > 0 && c.substring(0, i).trim().equals(name)) return c.substring(i + 1).trim(); } return null; }
         public void setHeader(String name, String value) { x.getResponseHeaders().add(name, value); }
+        public String remoteUser() { return null; }
+        public boolean inRole(String role) { return false; }
         public byte[] body() throws IOException { return Api.readAll(x.getRequestBody()); }
         public void send(int code, String ct, byte[] body, String disposition) throws IOException {
             x.getResponseHeaders().set("Content-Type", ct); if (disposition != null) x.getResponseHeaders().set("Content-Disposition", disposition);

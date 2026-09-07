@@ -5,7 +5,7 @@
 # Needs a JDK 17+ on PATH or in JAVA_HOME. The servlet API jars in lib/ are compile-time only (the container provides them).
 set -e
 cd "$(dirname "$0")"
-VERSION=1.2
+VERSION=1.3
 JAVAC=${JAVA_HOME:+$JAVA_HOME/bin/}javac; JAR=${JAVA_HOME:+$JAVA_HOME/bin/}jar
 rm -rf build/classes build/war build/twx-code-analyzer.jar build/twx-code-analyzer.war build/twx-code-analyzer-jakarta.war; mkdir -p build/classes
 $JAVAC --release 8 -Xlint:-options -cp lib/rhino-1.7.15.jar -d build/classes $(find src/main/java -name '*.java')
@@ -18,7 +18,7 @@ echo "built build/twx-code-analyzer.jar ($(du -h build/twx-code-analyzer.jar | c
 war() { # $1 = suffix ('' | -jakarta), $2 = servlet api jar, $3 = source dir
   W=build/war$1; rm -rf "$W"; mkdir -p "$W/WEB-INF/classes"
   $JAVAC --release 8 -Xlint:-options -cp "build/classes:$2" -d "$W/WEB-INF/classes" $(find "$3" -name '*.java')
-  cp -r build/classes/. "$W/WEB-INF/classes/"; cp src/war/webapp/WEB-INF/web.xml "$W/WEB-INF/"; cp -r static/. "$W/"
+  cp -r build/classes/. "$W/WEB-INF/classes/"; cp -r static/. "$W/"; cp -r src/war/webapp/. "$W/"   # WAR-only content: web.xml, enterprise.js, swagger/, help/
   printf 'Manifest-Version: 1.0\nImplementation-Title: TWX Code Analyzer\nImplementation-Version: %s\n' "$VERSION" > "$W/MANIFEST.MF"
   $JAR cfm "build/twx-code-analyzer$1.war" "$W/MANIFEST.MF" -C "$W" .
   echo "built build/twx-code-analyzer$1.war ($(du -h build/twx-code-analyzer$1.war | cut -f1))"

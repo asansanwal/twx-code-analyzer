@@ -125,5 +125,5 @@ public class RuleSettings {
 
     static boolean isThreshold(String k) { for (String[] t : THRESHOLDS) if (t[0].equals(k)) return true; return false; }
     static Severity severityOf(String s) { if (s == null) return null; try { return Severity.valueOf(s.trim().toUpperCase()); } catch (IllegalArgumentException e) { return null; } }
-    static Integer intOf(Object v) { if (v instanceof Number) return ((Number) v).intValue(); if (v instanceof String) try { return Integer.parseInt(((String) v).trim()); } catch (NumberFormatException e) {} return null; }
+    public static Integer intOf(Object v) { if (v instanceof Number) return ((Number) v).intValue(); if (v instanceof String) try { return Integer.parseInt(((String) v).trim()); } catch (NumberFormatException e) {} return null; }
 }

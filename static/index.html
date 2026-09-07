@@ -11,14 +11,14 @@
 <body>
 <nav class="navbar navbar-dark bg-dark navbar-expand px-3">
   <a class="navbar-brand fw-semibold" href="#/"><i class="fa-solid fa-magnifying-glass-chart me-2"></i>TWX Code Analyzer</a>
-  <ul class="navbar-nav me-auto">
+  <ul class="navbar-nav me-auto" id="mainnav">
     <li class="nav-item"><a class="nav-link" href="#/" data-nav="home"><i class="fa-solid fa-upload me-1"></i>Analyze</a></li>
     <li class="nav-item"><a class="nav-link" href="#/history" data-nav="history"><i class="fa-solid fa-clock-rotate-left me-1"></i>History</a></li>
     <li class="nav-item"><a class="nav-link" href="#/compare" data-nav="compare"><i class="fa-solid fa-code-compare me-1"></i>Compare</a></li>
     <li class="nav-item"><a class="nav-link" href="#/rules" data-nav="rules"><i class="fa-solid fa-list-check me-1"></i>Rules</a></li>
     <li class="nav-item"><a class="nav-link" href="#/settings" data-nav="settings"><i class="fa-solid fa-sliders me-1"></i>Settings</a></li>
   </ul>
-  <span class="navbar-text small" id="current-report"></span>
+  <span class="navbar-text small me-3" id="current-report"></span><span id="navright"></span>
 </nav>
 <main id="app" class="container-fluid py-3"></main>
 <div class="modal fade" id="detailModal" tabindex="-1"><div class="modal-dialog modal-xl modal-dialog-scrollable"><div class="modal-content"><div class="modal-header"><h5 class="modal-title" id="detailTitle"></h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body" id="detailBody"></div></div></div></div>

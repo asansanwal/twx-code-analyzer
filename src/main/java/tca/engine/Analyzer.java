@@ -7,12 +7,16 @@ import tca.rules.*;
 
 /** Runs the rule set over a TWX model and produces a Report (findings ranked by score, then severity, then path). */
 public class Analyzer {
-    public static final String VERSION = "1.2";
+    public static final String VERSION = "1.3";
     private final List<Rule> rules;
     public Analyzer() { this(RuleSet.all()); }
     public Analyzer(List<Rule> rules) { this.rules = rules; }
     public List<Rule> rules() { return rules; }
     public final Map<String, Long> ruleTimes = new LinkedHashMap<>();   // last run: rule id -> ms (for tuning)
+    /** Optional progress listener (stage, done, total); used by queued analyses to report where they are. */
+    public interface Progress { void step(String stage, int done, int total); }
+    public Progress progress;
+    void step(String stage, int done, int total) { if (progress != null) try { progress.step(stage, done, total); } catch (RuntimeException e) {} }
 
     public Report analyze(TwxModel twx, Map<String, Object> settings) {
         long t0 = System.currentTimeMillis(); boolean incTk = settings != null && Boolean.TRUE.equals(settings.get("includeToolkits"));
@@ -21,9 +25,11 @@ public class Analyzer {
         r.fileName = twx.fileName; r.fileSize = twx.fileSize; r.appName = twx.app.name; r.acronym = twx.app.acronym; r.snapshotName = twx.app.snapshotName; r.snapshotId = twx.app.snapshotId; r.projectId = twx.app.id; r.branchId = twx.app.branchId;
         r.analyzedAt = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss").format(new Date()); r.objectCount = twx.app.objects.size(); r.toolkitCount = twx.toolkits.size(); r.typeCounts = twx.app.typeCounts();
         for (TwxPackage p : twx.toolkits.values()) r.toolkits.add(tca.util.Json.obj("name", p.name, "acronym", p.acronym, "snapshot", p.snapshotName, "snapshotId", p.snapshotId, "objects", p.objects.size(), "system", ctx.isSystem(p), "sizeBytes", p.zipSize));
+        step("inventory", 0, rules.size());
         for (Script s : ctx.allScripts()) { r.scriptCount++; r.scriptLines += s.lines(); }
-        Map<String, Integer> counts = new LinkedHashMap<>();
+        Map<String, Integer> counts = new LinkedHashMap<>(); int done = 0;
         for (Rule rule : rules) {
+            step("rules", ++done, rules.size());
             if (!rs.enabled(rule)) { counts.put(rule.id, 0); continue; }
             List<Finding> out = new ArrayList<>(); long rt = System.currentTimeMillis(); Finding failed = null;
             try { rule.check(ctx, out); } catch (RuntimeException e) { failed = Finding.of(rule, null, "", "", "", "Rule failed: " + e, ""); failed.severity = Severity.INFO.name(); failed.score = 0; }
@@ -43,7 +49,7 @@ public class Analyzer {
         r.coverage.put("scripts", r.scriptCount); r.coverage.put("scriptsParsed", ctx.scriptsParsed); r.coverage.put("scriptsWithSyntaxErrors", ctx.scriptsWithSyntaxErrors); r.coverage.put("skipped", skipped);
         boolean incomplete = false; for (Map<String, Object> d : twx.diagnostics) if ("object-file-missing".equals(d.get("code")) || "toolkit-unreadable".equals(d.get("code"))) incomplete = true;
         r.coverage.put("status", incomplete ? "partial" : ctx.scriptsWithSyntaxErrors > 0 ? "partial" : "complete");
-        r.toolkitUsage = ToolkitUsage.compute(ctx);
+        step("toolkit usage", rules.size(), rules.size()); r.toolkitUsage = ToolkitUsage.compute(ctx);
         r.durationMs = System.currentTimeMillis() - t0; return r;
     }
 }

@@ -12,6 +12,10 @@ public interface Http {
     String header(String name);
     /** Value of a request cookie, null when absent. */
     String cookie(String name);
+    /** Authenticated user of the request (container security), null when anonymous or not applicable. */
+    String remoteUser();
+    /** Whether the authenticated user has the given container role; false when not applicable. */
+    boolean inRole(String role);
     /** Adds a response header (before send); used for Set-Cookie. */
     void setHeader(String name, String value);
     byte[] body() throws IOException;

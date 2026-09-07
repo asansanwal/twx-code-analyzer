@@ -3,7 +3,7 @@
 # and the deployable web application dist/twx-code-analyzer-<version>.war / -jakarta.war.
 # Needs: a Linux JDK 17+ in JAVA_HOME (jlink) and, for the Windows package, an extracted Windows JDK of the same major version in WIN_JDK (its jmods are used).
 set -e
-cd "$(dirname "$0")"; VERSION=${VERSION:-1.2}; JLINK=${JAVA_HOME:+$JAVA_HOME/bin/}jlink
+cd "$(dirname "$0")"; VERSION=${VERSION:-1.3}; JLINK=${JAVA_HOME:+$JAVA_HOME/bin/}jlink
 ./build.sh
 MODS=java.base,java.desktop,jdk.httpserver,java.logging,java.xml,jdk.crypto.ec,jdk.zipfs
 rm -rf dist; mkdir -p dist

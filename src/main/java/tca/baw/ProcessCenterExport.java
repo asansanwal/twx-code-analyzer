@@ -16,7 +16,7 @@ import tca.util.Json;
  */
 public final class ProcessCenterExport {
     private ProcessCenterExport() {}
-    static final String SERVLET = "/ProcessCenter/repository/com.lombardisoftware.repository.Repository/ImportExportServlet";
+    public static final String SERVLET = "/ProcessCenter/repository/com.lombardisoftware.repository.Repository/ImportExportServlet";
 
     public static Map<String, Object> export(String baseUrl, String user, String password, String snapshotId, File target) throws IOException {
         if (baseUrl == null || baseUrl.trim().isEmpty()) throw new IllegalArgumentException("Process Center URL is empty (environment variable processCenterURL)");
@@ -63,7 +63,7 @@ public final class ProcessCenterExport {
     }
     static String read(HttpURLConnection c) throws IOException { InputStream in = c.getResponseCode() >= 400 ? c.getErrorStream() : c.getInputStream(); if (in == null) return ""; ByteArrayOutputStream bo = new ByteArrayOutputStream(); byte[] buf = new byte[8192]; int n; while ((n = in.read(buf)) > 0) bo.write(buf, 0, n); in.close(); return new String(bo.toByteArray(), StandardCharsets.UTF_8); }
     static String enc(String s) { try { return URLEncoder.encode(s, "UTF-8"); } catch (UnsupportedEncodingException e) { return s; } }
-    static SSLSocketFactory trustAllFactory() throws IOException {
+    public static SSLSocketFactory trustAllFactory() throws IOException {
         try { SSLContext ctx = SSLContext.getInstance("TLS"); ctx.init(null, new TrustManager[] { new X509TrustManager() { public void checkClientTrusted(java.security.cert.X509Certificate[] c, String a) {} public void checkServerTrusted(java.security.cert.X509Certificate[] c, String a) {} public java.security.cert.X509Certificate[] getAcceptedIssuers() { return new java.security.cert.X509Certificate[0]; } } }, new java.security.SecureRandom()); return ctx.getSocketFactory(); }
         catch (Exception e) { throw new IOException("cannot create SSL context: " + e); }
     }

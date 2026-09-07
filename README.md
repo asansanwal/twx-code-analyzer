@@ -6,7 +6,7 @@ It also answers the everyday questions about an export: which toolkit artifacts 
 
 Everything runs on your machine with the desktop app. Nothing is uploaded anywhere.
 
-**Live demo: [https://twxca.com](https://twxca.com)** - the deployable web application (version 1.2) running as a public demo. Each browser gets a private workspace: your uploads and reports are visible to you only, you can delete them permanently at any time, and anything left is purged after 30 days. The rule settings are read-only on the demo (view and export them; import them into your own installation). Do not upload exports you are not allowed to store on a third-party server.
+**Live demo: [https://twxca.com](https://twxca.com)** - the web application (version 1.3) running as a public demo. Without an account each browser gets a private, temporary workspace (purged after 30 days, rule settings read-only). Create an account to keep your analyses, define quality gates and policies, accept findings, import from your Process Center or Studio, and use the API with a personal access token; you can purge your data or delete the account at any time. Do not upload exports you are not allowed to store on a third-party server.
 
 License: MIT (attribution required, see [License](#license)).
 
@@ -23,7 +23,7 @@ License: MIT (attribution required, see [License](#license)).
 * Exports: CSV, self-contained HTML and PDF reports of the findings (respecting the current filter) and of the toolkit usage.
 * Rule settings: enable or disable every rule, change its severity and impact, the severity weights behind the score and the numeric thresholds of the size and complexity rules; export the settings as a JSON file and import them elsewhere (browser, command line, embedded engine).
 * Analysis coverage and diagnostics: product version of the export, scripts skipped because of syntax errors, missing object files, unreadable toolkits.
-* A command line for batch use (JSON output), a JSON facade to embed the engine in other Java or BAW deliveries, and a deployable web application (WAR) for a shared server with private per-browser workspaces, permanent deletion of uploads and optional retention.
+* A command line for batch use (JSON output), a JSON facade to embed the engine in other Java or BAW deliveries, and a deployable web application (WAR) for a shared server: accounts or single sign-on, personal and team workspaces, central rule policies with quality gates and verdicts, accepted findings, an analysis queue, Process Center and Business Automation Studio import, notifications, dashboard, executive PDF, audit, metrics, an OpenAPI description with Swagger UI for pipelines, and a built-in help (see [docs/WEB-APPLICATION.md](docs/WEB-APPLICATION.md)).
 
 The browser UI has the pages Analyze, History, Compare, Rules and Settings, and per report the tabs Findings, Overview, Objects & Diagrams, Toolkit Usage and TWX Search.
 
@@ -260,7 +260,10 @@ The desktop app parses files locally and listens on 127.0.0.1 only (`serve ... -
 * [docs/RESEARCH-RULE-SOURCES.md](docs/RESEARCH-RULE-SOURCES.md) - public sources of the best-practice rules
 * [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) - packages, TWX facts, ranking, diagrams, deliveries
 * [docs/EMBEDDING.md](docs/EMBEDDING.md) - the JSON facade for embedding the engine (Java, BAW)
-* [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) - the deployable web application (WAR on Liberty, WebSphere, Tomcat; Docker; the layout of the live demo)
+* [docs/WEB-APPLICATION.md](docs/WEB-APPLICATION.md) - the web application (WAR) enterprise edition: features, configuration, identity, API and pipeline recipes, repositories, data layout
+* [docs/SECURITY-REVIEW-WAR.md](docs/SECURITY-REVIEW-WAR.md) - security review of the web application
+* [docs/TEST-REPORT-1.3.md](docs/TEST-REPORT-1.3.md) - functional test results of the web application
+* [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) - deploying the WAR (Liberty, WebSphere, Tomcat; Docker; the layout of the live demo)
 * [docs/CHANGELOG.md](docs/CHANGELOG.md) - what changed in each version
 * [docs/BUILD-AND-SIGNING.md](docs/BUILD-AND-SIGNING.md) - reproducible build, packaging, signed Windows launcher
 

@@ -8,7 +8,7 @@ import java.util.*;
  *  ruled cells, automatic page breaks with repeated table headers, page numbers. Enough for printable reports; not a layout engine. */
 public final class Pdf {
     final double pageW, pageH, margin = 40; final List<String> pages = new ArrayList<>(); StringBuilder page; double y; int pageNo;
-    String footer = "";
+    public String footer = "";
     public Pdf(boolean landscape) { pageW = landscape ? 841.89 : 595.28; pageH = landscape ? 595.28 : 841.89; newPage(); }
 
     // ---- primitives ----

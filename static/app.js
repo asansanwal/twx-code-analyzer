@@ -1,4 +1,5 @@
-/* TWX Code Analyzer - single page UI (no framework). Routes: #/ (analyze), #/report/<id>, #/history, #/compare, #/rules, #/settings. All URLs are relative (the app also runs under a servlet context root). */
+/* TWX Code Analyzer - single page UI (no framework). Routes: #/ (analyze), #/report/<id>, #/history, #/compare, #/rules, #/settings. All URLs are relative (the app also runs under a servlet context root).
+   Extension points (window.TCA: routes, reportTabs, hooks) are used by enterprise.js, which the WAR loads when the server reports enterprise features; the desktop app never loads it. */
 (function () {
   var app = document.getElementById('app'), state = { id: null, report: null, objects: null, filter: { sev: {}, cat: '', rule: '', q: '', type: '', conf: '' }, sort: 'score' };
   /* rule settings (enabled / severity / impact per rule, severity weights, thresholds) are stored by the server in the data directory (api/settings) and apply to every analysis */
@@ -20,6 +21,7 @@
   // ---------------- router ----------------
   function route() {
     var h = location.hash || '#/'; var m;
+    for (var k in TCA.routes) if (h === k || h.indexOf(k + '/') === 0 || h.indexOf(k + '?') === 0) return TCA.routes[k](h);
     if (h === '#/' ) return home();
     if ((m = h.match(/^#\/report\/([^\/]+)(?:\/(\w+))?(?:\/(.+))?$/))) return openReport(m[1], m[2] || 'findings', m[3] ? decodeURIComponent(m[3]) : null);
     if (h === '#/history') return history();
@@ -28,29 +30,33 @@
     if (h === '#/settings') return settingsPage();
     home();
   }
-  window.addEventListener('hashchange', route);
 
   // ---------------- home / upload ----------------
-  function home() {
-    setNav('home'); document.getElementById('current-report').textContent = '';
-    app.innerHTML = '<div class="row justify-content-center"><div class="col-lg-8">' +
-      '<h4 class="mb-3">Analyze a TWX export</h4>' +
-      '<div class="dropzone" id="dz"><i class="fa-solid fa-file-zipper fa-2x mb-2 text-secondary"></i><div>Drop a <b>.twx</b> file here or click to choose</div><div class="small-muted mt-1" id="privacy">' + esc(privacyLine()) + '</div><input type="file" id="file" accept=".twx,.zip" hidden></div>' +
+  function uploadHtml() {
+    return '<div class="dropzone" id="dz"><i class="fa-solid fa-file-zipper fa-2x mb-2 text-secondary"></i><div>Drop a <b>.twx</b> file here or click to choose</div><div class="small-muted mt-1" id="privacy">' + esc(privacyLine()) + '</div><input type="file" id="file" accept=".twx,.zip" hidden></div>' +
       '<div class="form-check mt-3"><input class="form-check-input" type="checkbox" id="optToolkits"' + (settingsCache && settingsCache.includeToolkits ? ' checked' : '') + '><label class="form-check-label" for="optToolkits">Also analyze the bundled (non-system) toolkits</label></div>' +
       '<div class="small-muted mt-1" id="homeSettings"></div>' +
-      '<div id="progress" class="mt-3"></div>' +
-      '<div class="mt-4" id="recent"></div></div></div>';
+      '<div id="progress" class="mt-3"></div>';
+  }
+  function home() {
+    setNav('home'); document.getElementById('current-report').textContent = '';
+    app.innerHTML = '<div class="row justify-content-center"><div class="col-lg-8">' + '<h4 class="mb-3">Analyze a TWX export</h4>' + uploadHtml() + '<div class="mt-4" id="recent"></div></div></div>';
+    bindUpload();
+    function recent() { api('api/history').then(function (h) { var el = document.getElementById('recent'); if (!el) return; el.innerHTML = h.length ? '<h6>Recent analyses</h6>' + historyTable(h.slice(0, 8)) : ''; el.querySelectorAll('[data-del]').forEach(function (b) { b.addEventListener('click', function () { deleteReport(b.getAttribute('data-del'), recent); }); }); }); }
+    recent();
+  }
+  /** Wires the upload markup of uploadHtml() (drop zone, file input, settings note). */
+  function bindUpload() {
     var dz = document.getElementById('dz'), fi = document.getElementById('file');
     dz.addEventListener('click', function () { fi.click(); }); fi.addEventListener('change', function () { if (fi.files[0]) upload(fi.files[0]); });
     ['dragenter', 'dragover'].forEach(function (e) { dz.addEventListener(e, function (ev) { ev.preventDefault(); dz.classList.add('drag'); }); });
     ['dragleave', 'drop'].forEach(function (e) { dz.addEventListener(e, function (ev) { ev.preventDefault(); dz.classList.remove('drag'); }); });
     dz.addEventListener('drop', function (ev) { if (ev.dataTransfer.files[0]) upload(ev.dataTransfer.files[0]); });
-    function recent() { api('api/history').then(function (h) { var el = document.getElementById('recent'); if (!el) return; el.innerHTML = h.length ? '<h6>Recent analyses</h6>' + historyTable(h.slice(0, 8)) : ''; el.querySelectorAll('[data-del]').forEach(function (b) { b.addEventListener('click', function () { deleteReport(b.getAttribute('data-del'), recent); }); }); }); }
-    recent();
-    loadSettings().then(function (d) { document.getElementById('optToolkits').checked = !!d.includeToolkits; var n = Object.keys(d.rules).filter(function (k) { return d.rules[k].customized; }).length, off = Object.keys(d.rules).filter(function (k) { return !d.rules[k].enabled; }).length;
+    loadSettings().then(function (d) { if (!document.getElementById('optToolkits')) return; document.getElementById('optToolkits').checked = !!d.includeToolkits; var n = Object.keys(d.rules).filter(function (k) { return d.rules[k].customized; }).length, off = Object.keys(d.rules).filter(function (k) { return !d.rules[k].enabled; }).length;
       document.getElementById('homeSettings').innerHTML = d.customized ? '<i class="fa-solid fa-sliders me-1"></i>Custom rule settings are active: ' + n + ' rule(s) customized' + (off ? ', ' + off + ' disabled' : '') + '. <a href="#/settings">Settings</a>' : 'Built-in rule settings (every rule enabled with its default severity). <a href="#/settings">Settings</a>'; });
   }
   function upload(file) {
+    if (TCA.hooks.upload && TCA.hooks.upload(file)) return;
     var fd = new FormData(); fd.append('file', file); var tk = document.getElementById('optToolkits').checked ? '1' : '0';
     document.getElementById('progress').innerHTML = '<div class="alert alert-info"><span class="spinner-border spinner-border-sm me-2"></span>Analyzing <b>' + esc(file.name) + '</b> (' + fmtBytes(file.size) + ') ...</div>';
     fetch('api/analyze?toolkits=' + tk + '&name=' + encodeURIComponent(file.name), { method: 'POST', body: fd }).then(function (r) { return r.json(); }).then(function (rep) {
@@ -78,23 +84,27 @@
   }
   function renderReport(tab, arg) {
     var r = state.report, s = r.summary; document.getElementById('current-report').textContent = r.app.name + ' ' + r.app.snapshot;
-    var tabs = [['findings', 'Findings', 'fa-triangle-exclamation'], ['overview', 'Overview', 'fa-chart-pie'], ['objects', 'Objects & Diagrams', 'fa-diagram-project'], ['toolkits', 'Toolkit Usage', 'fa-toolbox'], ['search', 'TWX Search', 'fa-magnifying-glass']];
+    var tabs = [['findings', 'Findings', 'fa-triangle-exclamation'], ['overview', 'Overview', 'fa-chart-pie'], ['objects', 'Objects & Diagrams', 'fa-diagram-project'], ['toolkits', 'Toolkit Usage', 'fa-toolbox'], ['search', 'TWX Search', 'fa-magnifying-glass']].concat(TCA.reportTabs);
     var cov = r.coverage || {}, diags = r.diagnostics || [];
     app.innerHTML = '<div class="d-flex align-items-center mb-2"><h4 class="mb-0 me-3">' + esc(r.app.name) + ' <span class="text-secondary">(' + esc(r.app.acronym) + ') ' + esc(r.app.snapshot) + '</span></h4><span class="small-muted">' + esc(r.fileName) + ' · ' + r.inventory.objects + ' objects · ' + r.inventory.toolkits + ' toolkits · ' + (r.app.bawVersion ? esc(r.app.bawVersion) + ' export · ' : '') + 'analyzed ' + esc(r.analyzedAt) + ' in ' + r.durationMs + ' ms</span>' +
       '<span class="ms-auto">Health <span class="health ' + (s.healthScore >= 80 ? 'text-success' : s.healthScore >= 50 ? 'text-warning' : 'text-danger') + '">' + s.healthScore + '</span> <span class="small-muted">/ 100</span></span>' +
+      (TCA.hooks.reportHeader ? TCA.hooks.reportHeader(r) : '') +
       '<button class="btn btn-sm btn-outline-danger ms-3" id="repDelete" title="Delete this analysis permanently: the uploaded file and the report are removed from the server"><i class="fa-solid fa-trash me-1"></i>Delete</button></div>' +
       '<ul class="nav nav-tabs mb-3">' + tabs.map(function (t) { return '<li class="nav-item"><a class="nav-link ' + (t[0] === tab ? 'active' : '') + '" href="#/report/' + state.id + '/' + t[0] + '"><i class="fa-solid ' + t[2] + ' me-1"></i>' + t[1] + '</a></li>'; }).join('') + '</ul>' +
       (diags.length ? '<div class="alert alert-warning py-2 small"><i class="fa-solid fa-triangle-exclamation me-1"></i>' + diags.map(function (d) { return esc(d.message); }).join('<br>') + '</div>' : '') +
       (cov.status === 'partial' ? '<div class="alert alert-secondary py-2 small"><i class="fa-solid fa-circle-info me-1"></i>Analysis coverage: partial. ' + cov.scriptsParsed + ' of ' + cov.scripts + ' scripts parsed, ' + cov.scriptsWithSyntaxErrors + ' with syntax errors skipped by the syntax-tree rules' + (cov.skipped && cov.skipped.length ? ': ' + cov.skipped.slice(0, 5).map(function (k) { return esc(k.object) + ' / ' + esc(k.location); }).join('; ') + (cov.skipped.length > 5 ? ' ...' : '') : '') + '</div>' : '') +
       '<div id="tab"></div>';
     document.getElementById('repDelete').addEventListener('click', function () { deleteReport(state.id, function () { nav('#/history'); }); });
+    if (TCA.hooks.afterReportHeader) TCA.hooks.afterReportHeader(r);
+    var custom = TCA.reportTabs.filter(function (t) { return t[0] === tab; })[0]; if (custom) return custom[3](arg);
     if (tab === 'overview') overview(); else if (tab === 'objects') objects(arg); else if (tab === 'search') search(); else if (tab === 'toolkits') toolkitUsage(); else findings(arg);
   }
   function overview() {
     var r = state.report, s = r.summary, el = document.getElementById('tab');
     var cats = Object.keys(s.byCategory).sort(function (a, b) { return s.byCategory[b] - s.byCategory[a]; });
     el.innerHTML = '<div class="row g-3">' + SEV.map(function (v) { return '<div class="col-6 col-lg-2"><div class="card p-3 text-center"><div class="stat sev-' + v + '">' + (s.bySeverity[v] || 0) + '</div><div class="small-muted">' + v.charAt(0) + v.slice(1).toLowerCase() + '</div></div></div>'; }).join('') +
-      '<div class="col-6 col-lg-2"><div class="card p-3 text-center"><div class="stat">' + s.findings + '</div><div class="small-muted">Findings</div></div></div><div class="col-6 col-lg-2"><div class="card p-3 text-center"><div class="stat">' + s.score + '</div><div class="small-muted">Weighted score</div></div></div></div>' +
+      '<div class="col-6 col-lg-2"><div class="card p-3 text-center"><div class="stat">' + s.findings + '</div><div class="small-muted">' + (s.accepted !== undefined ? 'Open findings' : 'Findings') + '</div></div></div><div class="col-6 col-lg-2"><div class="card p-3 text-center"><div class="stat">' + s.score + '</div><div class="small-muted">Weighted score</div></div></div>' +
+      (s.accepted !== undefined ? '<div class="col-6 col-lg-2"><div class="card p-3 text-center"><div class="stat text-success">' + s.accepted + '</div><div class="small-muted">Accepted findings</div></div></div>' : '') + '</div>' +
       settingsNote(r) +
       '<div class="row g-3 mt-1"><div class="col-lg-4"><div class="card p-3"><h6>By severity</h6><canvas id="cSev" height="200"></canvas></div></div><div class="col-lg-4"><div class="card p-3"><h6>By category</h6><canvas id="cCat" height="200"></canvas></div></div><div class="col-lg-4"><div class="card p-3"><h6>Inventory</h6><table class="table table-sm mb-0">' + Object.keys(r.inventory.types).map(function (t) { return '<tr><td>' + esc(typeLabel(t)) + '</td><td class="text-end">' + r.inventory.types[t] + '</td></tr>'; }).join('') + '<tr><td>Scripts</td><td class="text-end">' + r.inventory.scripts + ' (' + r.inventory.scriptLines + ' lines)</td></tr></table></div></div></div>' +
       '<div class="card p-3 mt-3"><h6>Top rules</h6><table class="table table-sm table-hover mb-0"><thead><tr><th>Rule</th><th>Category</th><th>Severity</th><th class="text-end">Findings</th></tr></thead><tbody>' + r.rules.filter(function (x) { return x.count > 0; }).sort(function (a, b) { return b.count - a.count; }).map(function (x) { return '<tr class="selectable" onclick="location.hash=\'#/report/' + state.id + '/findings/' + x.id + '\'"><td><b>' + esc(x.id) + '</b> ' + esc(x.title) + '</td><td>' + esc(x.category) + '</td><td>' + sevBadge(x.severity) + '</td><td class="text-end">' + x.count + '</td></tr>'; }).join('') + '</tbody></table></div>' +
@@ -116,19 +126,21 @@
       '<div class="col-auto"><select class="form-select form-select-sm" id="ftype"><option value="">All artifact types</option>' + Object.keys(types).sort().map(function (c) { return '<option ' + (f.type === c ? 'selected' : '') + '>' + esc(c) + '</option>'; }).join('') + '</select></div>' +
       '<div class="col-auto"><select class="form-select form-select-sm" id="fconf" title="Confidence"><option value="">Confirmed + needs review</option><option value="high" ' + (f.conf === 'high' ? 'selected' : '') + '>Confirmed only</option><option value="medium" ' + (f.conf === 'medium' ? 'selected' : '') + '>Needs review only</option></select></div>' +
       '<div class="col"><input class="form-control form-control-sm" id="fq" placeholder="Filter by artifact, step or message" value="' + esc(f.q) + '"></div>' +
+      (r.summary.accepted ? '<div class="col-auto"><label class="form-check form-check-inline small"><input type="checkbox" class="form-check-input" id="facc"' + (f.accepted ? ' checked' : '') + '> show accepted (' + r.summary.accepted + ')</label></div>' : '') +
       '<div class="col-auto"><select class="form-select form-select-sm" id="fsort"><option value="score">Sort: rank (score)</option><option value="object">Sort: artifact</option><option value="rule">Sort: rule</option></select></div>' +
       '<div class="col-auto"><div class="btn-group"><button class="btn btn-sm btn-outline-secondary" id="fexport"><i class="fa-solid fa-download me-1"></i>CSV</button><button class="btn btn-sm btn-outline-secondary" id="fexporthtml"><i class="fa-solid fa-file-code me-1"></i>HTML</button><button class="btn btn-sm btn-outline-secondary" id="fexportpdf"><i class="fa-solid fa-file-pdf me-1"></i>PDF</button></div></div></div></div><div id="flist"></div>';
     el.querySelectorAll('.fsev').forEach(function (c) { c.addEventListener('change', function () { f.sev[c.value] = c.checked; list(); }); });
     ['fcat', 'frule', 'ftype', 'fsort', 'fconf'].forEach(function (i) { document.getElementById(i).addEventListener('change', function () { f.cat = document.getElementById('fcat').value; f.rule = document.getElementById('frule').value; f.type = document.getElementById('ftype').value; f.conf = document.getElementById('fconf').value; state.sort = document.getElementById('fsort').value; list(); }); });
     document.getElementById('fsort').value = state.sort; document.getElementById('fq').addEventListener('input', function () { f.q = this.value; list(); });
+    if (document.getElementById('facc')) document.getElementById('facc').addEventListener('change', function () { f.accepted = this.checked; list(); });
     document.getElementById('fexport').addEventListener('click', function () { exportCsv(filtered()); });
     document.getElementById('fexporthtml').addEventListener('click', function () { exportHtml(filtered()); });
     document.getElementById('fexportpdf').addEventListener('click', function () { var sev = SEV.filter(function (v) { return f.sev[v] !== false; }).join(','); window.open('api/report/' + state.id + '/pdf?sev=' + sev + '&cat=' + encodeURIComponent(f.cat) + '&rule=' + encodeURIComponent(f.rule) + '&type=' + encodeURIComponent(f.type) + '&conf=' + f.conf + '&q=' + encodeURIComponent(f.q) + '&sort=' + state.sort, '_blank'); });
-    function filtered() { var q = f.q.toLowerCase(); return r.findings.filter(function (x) { return f.sev[x.severity] !== false && (!f.cat || x.category === f.cat) && (!f.rule || x.ruleId === f.rule) && (!f.type || x.objectTypeLabel === f.type) && (!f.conf || (x.confidence || 'high') === f.conf) && (!q || (x.path + ' ' + x.message + ' ' + x.title).toLowerCase().indexOf(q) >= 0); }); }
+    function filtered() { var q = f.q.toLowerCase(); return r.findings.filter(function (x) { return (f.accepted || !x.accepted) && f.sev[x.severity] !== false && (!f.cat || x.category === f.cat) && (!f.rule || x.ruleId === f.rule) && (!f.type || x.objectTypeLabel === f.type) && (!f.conf || (x.confidence || 'high') === f.conf) && (!q || (x.path + ' ' + x.message + ' ' + x.title).toLowerCase().indexOf(q) >= 0); }); }
     function list() {
       var rows = filtered(); if (state.sort === 'object') rows = rows.slice().sort(function (a, b) { return (a.objectName + a.itemName).localeCompare(b.objectName + b.itemName) || b.score - a.score; }); else if (state.sort === 'rule') rows = rows.slice().sort(function (a, b) { return a.ruleId.localeCompare(b.ruleId) || b.score - a.score; });
       var max = 400, html = '<div class="small-muted mb-1">' + rows.length + ' finding(s)' + (rows.length > max ? ', showing the first ' + max : '') + '</div><table class="table table-sm table-hover bg-white findings-table"><thead class="sticky-top-2"><tr><th>#</th><th>Severity</th><th>Rule</th><th>Artifact path</th><th>Finding</th></tr></thead><tbody>';
-      rows.slice(0, max).forEach(function (x, i) { var idx = r.findings.indexOf(x); html += '<tr class="selectable" data-i="' + idx + '"><td>' + (i + 1) + '</td><td>' + sevBadge(x.severity) + ' <span class="score-pill">' + x.score + '</span>' + (x.confidence === 'medium' ? ' <span class="badge bg-light text-dark border" title="Heuristic match: confirm in context">review</span>' : '') + '</td><td><b>' + esc(x.ruleId) + '</b><br><span class="small-muted">' + esc(x.title) + '</span></td><td class="path">' + esc(x.path) + '</td><td>' + esc(x.message) + (x.evidence ? '<div class="small-muted mono">' + esc(x.evidence) + '</div>' : '') + '</td></tr>'; });
+      rows.slice(0, max).forEach(function (x, i) { var idx = r.findings.indexOf(x); html += '<tr class="selectable' + (x.accepted ? ' text-secondary' : '') + '" data-i="' + idx + '"><td>' + (i + 1) + '</td><td>' + sevBadge(x.severity) + ' <span class="score-pill">' + x.score + '</span>' + (x.confidence === 'medium' ? ' <span class="badge bg-light text-dark border" title="Heuristic match: confirm in context">review</span>' : '') + (x.accepted ? ' <span class="badge bg-success" title="' + esc(x.acceptedReason || '') + '">accepted</span>' : '') + '</td><td><b>' + esc(x.ruleId) + '</b><br><span class="small-muted">' + esc(x.title) + '</span></td><td class="path">' + esc(x.path) + '</td><td>' + esc(x.message) + (x.evidence ? '<div class="small-muted mono">' + esc(x.evidence) + '</div>' : '') + '</td></tr>'; });
       document.getElementById('flist').innerHTML = html + '</tbody></table>';
       document.getElementById('flist').querySelectorAll('tr[data-i]').forEach(function (tr) { tr.addEventListener('click', function () { findingDetail(r.findings[+tr.getAttribute('data-i')]); }); });
     }
@@ -145,21 +157,28 @@
       '<h6>Location</h6><div class="path mb-3"><i class="fa-solid fa-location-dot me-1"></i>' + esc(x.path) + (x.location && x.itemName ? ' <span class="small-muted">(' + esc(x.location) + ')</span>' : '') + '</div>' +
       '<h6>Finding</h6><p>' + esc(x.message) + (x.confidence === 'medium' ? ' <span class="badge bg-light text-dark border">needs review</span>' : '') + '</p>' + (x.evidence ? '<div class="evidence mb-3">' + esc(x.evidence) + '</div>' : '') + (x.line ? '<div class="small-muted mb-3">Position: line ' + x.line + (x.column ? ', column ' + x.column : '') + (x.snippet && x.evidence.indexOf(x.snippet) < 0 ? ' — <span class="mono">' + esc(x.snippet) + '</span>' : '') + '</div>' : '') +
       '<h6>Why it matters</h6><div class="description mb-3">' + esc(rule.description) + '</div><h6>Remediation</h6><div class="remediation mb-3">' + esc(x.remediation) + '</div>' +
-      (x.objectId ? '<button class="btn btn-primary btn-sm" id="btnShow"><i class="fa-solid fa-diagram-project me-1"></i>Show in ' + (x.objectType === 'bpd' ? 'process diagram' : x.objectType === 'process' ? 'service diagram' : 'object view') + '</button>' : '');
+      (x.accepted ? '<div class="alert alert-success py-2 small"><i class="fa-solid fa-check me-1"></i>Accepted by ' + esc(x.acceptedBy || '') + ' on ' + esc(x.acceptedAt || '') + (x.acceptedReason ? ': ' + esc(x.acceptedReason) : '') + '. Accepted findings do not count in the score, the health and the verdict.</div>' : '') +
+      (x.objectId && state.report.uploadKept !== false ? '<button class="btn btn-primary btn-sm" id="btnShow"><i class="fa-solid fa-diagram-project me-1"></i>Show in ' + (x.objectType === 'bpd' ? 'process diagram' : x.objectType === 'process' ? 'service diagram' : 'object view') + '</button> ' : '') +
+      (TCA.hooks.findingDetail ? TCA.hooks.findingDetail(x) : '');
     modal(esc(x.ruleId) + ' ' + esc(x.title), html);
     var b = document.getElementById('btnShow'); if (b) b.addEventListener('click', function () { bootstrap.Modal.getInstance(document.getElementById('detailModal')).hide(); nav('#/report/' + state.id + '/objects/' + encodeURIComponent(x.objectId + (x.itemId ? '|' + x.itemId : ''))); });
+    if (TCA.hooks.findingDetailBind) TCA.hooks.findingDetailBind(x);
   }
 
   // ---------------- objects & diagrams ----------------
+  function uploadGone() { if (state.report && state.report.uploadKept === false) { document.getElementById('tab').innerHTML = '<div class="alert alert-secondary"><i class="fa-solid fa-circle-info me-1"></i>The uploaded export was discarded after the analysis (server policy): artifact browsing, diagrams and search are not available for this report. Findings, exports and comparisons are.</div>'; return true; } return false; }
   function objects(arg) {
+    if (uploadGone()) return;
     var el = document.getElementById('tab'); el.innerHTML = '<div class="row"><div class="col-lg-3"><div class="card p-2"><input class="form-control form-control-sm mb-2" id="otree-q" placeholder="Filter artifacts"><div class="form-check form-check-inline small"><input class="form-check-input" type="checkbox" id="otk"><label class="form-check-label" for="otk">Show toolkits</label></div><div class="tree" id="otree" style="max-height:70vh;overflow:auto">Loading...</div></div></div><div class="col-lg-9" id="odetail"><div class="alert alert-secondary">Select an artifact to see its diagram, scripts, references and findings.</div></div></div>';
     function load() { api('api/objects/' + state.id + (document.getElementById('otk').checked ? '?toolkits=1' : '')).then(function (o) { state.objects = o; tree(); if (arg) { var p = arg.split('|'); showObject(p[0], p[1]); arg = null; } }); }
     document.getElementById('otk').addEventListener('change', load); document.getElementById('otree-q').addEventListener('input', tree); load();
     function tree() {
-      var q = document.getElementById('otree-q').value.toLowerCase(), counts = {}; state.report.findings.forEach(function (f) { if (f.objectId) counts[f.objectId] = (counts[f.objectId] || 0) + 1; });
+      var q = document.getElementById('otree-q').value.toLowerCase(), counts = {}; state.report.findings.forEach(function (f) { if (!f.objectId) return; var c = counts[f.objectId] = counts[f.objectId] || { CRITICAL: 0, MAJOR: 0, MINOR: 0, INFO: 0, accepted: 0 }; if (f.accepted) c.accepted++; else c[f.severity]++; });
+      function badges(c) { if (!c) return ''; return ' ' + SEV.filter(function (v) { return c[v]; }).map(function (v) { return '<span class="badge sev-' + v + ' me-1" title="' + v.charAt(0) + v.slice(1).toLowerCase() + '">' + c[v] + '</span>'; }).join('') + (c.accepted ? '<span class="badge bg-success me-1" title="accepted">' + c.accepted + '</span>' : ''); }
+      function sum(list) { var t = null; list.forEach(function (o) { var c = counts[o.id]; if (!c) return; t = t || { CRITICAL: 0, MAJOR: 0, MINOR: 0, INFO: 0, accepted: 0 }; for (var k in c) t[k] += c[k]; }); return t; }
       var html = ''; state.objects.packages.forEach(function (p) { var byType = {}; p.objects.forEach(function (o) { if (q && o.name.toLowerCase().indexOf(q) < 0) return; (byType[o.typeLabel] = byType[o.typeLabel] || []).push(o); });
         var keys = Object.keys(byType).sort(); if (!keys.length) return; html += '<div class="fw-semibold mt-2"><i class="fa-solid ' + (p.toolkit ? 'fa-toolbox' : 'fa-cube') + ' me-1"></i>' + esc(p.name) + ' <span class="small-muted">' + esc(p.snapshot) + '</span></div><ul>';
-        keys.forEach(function (k) { html += '<li><details' + (q ? ' open' : '') + '><summary>' + esc(k) + ' <span class="small-muted">(' + byType[k].length + ')</span></summary><ul>' + byType[k].sort(function (a, b) { return a.name.localeCompare(b.name); }).map(function (o) { return '<li data-oid="' + o.id + '">' + esc(o.name) + (o.subtype ? ' <span class="small-muted">' + esc(o.subtype) + '</span>' : '') + (counts[o.id] ? ' <span class="badge bg-danger">' + counts[o.id] + '</span>' : '') + '</li>'; }).join('') + '</ul></details></li>'; }); html += '</ul>'; });
+        keys.forEach(function (k) { html += '<li><details' + (q ? ' open' : '') + '><summary>' + esc(k) + ' <span class="small-muted">(' + byType[k].length + ')</span>' + badges(sum(byType[k])) + '</summary><ul>' + byType[k].sort(function (a, b) { return a.name.localeCompare(b.name); }).map(function (o) { return '<li data-oid="' + o.id + '">' + esc(o.name) + (o.subtype ? ' <span class="small-muted">' + esc(o.subtype) + '</span>' : '') + badges(counts[o.id]) + '</li>'; }).join('') + '</ul></details></li>'; }); html += '</ul>'; });
       document.getElementById('otree').innerHTML = html || '<div class="small-muted">No artifacts</div>';
       document.getElementById('otree').querySelectorAll('li[data-oid]').forEach(function (li) { li.addEventListener('click', function (e) { e.stopPropagation(); showObject(li.getAttribute('data-oid')); }); });
     }
@@ -219,6 +238,7 @@
 
   // ---------------- search ----------------
   function search() {
+    if (uploadGone()) return;
     var el = document.getElementById('tab'); el.innerHTML = '<div class="card p-3"><div class="row g-2 align-items-end"><div class="col-md-4"><label class="form-label small">Search text or regular expression</label><input class="form-control" id="sq" placeholder="e.g. tw.local.customer, executeServiceByName, ^SELECT"></div>' +
       '<div class="col-auto"><label class="form-label small">Scope</label><select class="form-select" id="sscope"><option value="all">Everything</option><option value="names">Artifact names</option><option value="scripts">Scripts / conditions / mappings</option><option value="xml">Raw XML</option></select></div>' +
       '<div class="col-auto"><label class="form-label small">Artifact types</label><select class="form-select" id="stypes" multiple size="3"><option value="process">Services</option><option value="bpd">Processes</option><option value="coachView">Coach views</option><option value="twClass">Business objects</option><option value="managedAsset">Managed assets</option><option value="participant">Teams</option><option value="epv">EPVs</option></select></div>' +
@@ -242,12 +262,16 @@
       document.getElementById('cgo').addEventListener('click', function () { var a = document.getElementById('ca').value, b = document.getElementById('cb').value; document.getElementById('cres').innerHTML = '<span class="spinner-border"></span>';
         api('api/compare?a=' + a + '&b=' + b).then(function (d) {
           function rows(l, cls) { return l.map(function (o) { return '<tr class="' + cls + '"><td>' + esc(o.typeLabel) + '</td><td>' + esc(o.name) + '</td></tr>'; }).join(''); }
-          function frows(l) { return l.map(function (f) { return '<tr><td>' + sevBadge(f.severity) + '</td><td><b>' + esc(f.ruleId) + '</b> ' + esc(f.title) + '</td><td class="path">' + esc(f.path) + '</td><td>' + esc(f.message) + '</td></tr>'; }).join(''); }
+          var hasAcc = d.findings['new'].concat(d.findings.fixed).some(function (f) { return f.accepted; }); if (hasAcc && state.hideAccepted === undefined) state.hideAccepted = true;
+          function vis(l) { return state.hideAccepted ? l.filter(function (f) { return !f.accepted; }) : l; }
+          function frows(l) { return vis(l).map(function (f) { return '<tr' + (f.accepted ? ' class="text-secondary"' : '') + '><td>' + sevBadge(f.severity) + (f.accepted ? ' <span class="badge bg-success">accepted</span>' : '') + '</td><td><b>' + esc(f.ruleId) + '</b> ' + esc(f.title) + '</td><td class="path">' + esc(f.path) + '</td><td>' + esc(f.message) + '</td></tr>'; }).join(''); }
           var sb = d.summaryBefore, sa = d.summaryAfter;
           document.getElementById('cres').innerHTML = (d.sameApplication ? '' : '<div class="alert alert-warning">The two analyses are of different applications (' + esc(d.before.name) + ' vs ' + esc(d.after.name) + ').</div>') +
             '<div class="row g-3"><div class="col-md-3"><div class="card p-3 text-center"><div class="stat">' + sb.healthScore + ' → ' + sa.healthScore + '</div><div class="small-muted">Health</div></div></div><div class="col-md-3"><div class="card p-3 text-center"><div class="stat">' + sb.findings + ' → ' + sa.findings + '</div><div class="small-muted">Findings</div></div></div><div class="col-md-3"><div class="card p-3 text-center"><div class="stat text-danger">' + d.findings['new'].length + '</div><div class="small-muted">New findings (regressions)</div></div></div><div class="col-md-3"><div class="card p-3 text-center"><div class="stat text-success">' + d.findings.fixed.length + '</div><div class="small-muted">Fixed findings</div></div></div></div>' +
             '<div class="card p-3 mt-3"><h6>Objects: ' + d.added.length + ' added, ' + d.removed.length + ' removed, ' + d.changed.length + ' changed, ' + d.unchanged + ' unchanged' + (d.toolkitChanges.length ? ' · toolkit changes: ' + d.toolkitChanges.map(function (t) { return esc(t.name) + ' ' + esc(t.before || '-') + ' → ' + esc(t.after || '-'); }).join(', ') : '') + '</h6><div class="row"><div class="col-md-4"><b class="text-success">Added</b><table class="table table-sm"><tbody>' + rows(d.added, 'table-success') + '</tbody></table></div><div class="col-md-4"><b class="text-danger">Removed</b><table class="table table-sm"><tbody>' + rows(d.removed, 'table-danger') + '</tbody></table></div><div class="col-md-4"><b class="text-warning">Changed</b><table class="table table-sm"><tbody>' + rows(d.changed, 'table-warning') + '</tbody></table></div></div></div>' +
-            '<div class="card p-3 mt-3"><h6 class="text-danger">New findings (' + d.findings['new'].length + ')</h6><table class="table table-sm findings-table"><tbody>' + frows(d.findings['new']) + '</tbody></table></div><div class="card p-3 mt-3"><h6 class="text-success">Fixed findings (' + d.findings.fixed.length + ')</h6><table class="table table-sm findings-table"><tbody>' + frows(d.findings.fixed) + '</tbody></table></div>';
+            (hasAcc ? '<div class="form-check mt-3"><input class="form-check-input" type="checkbox" id="chide"' + (state.hideAccepted ? ' checked' : '') + '><label class="form-check-label small" for="chide">Hide accepted findings</label></div>' : '') +
+            '<div class="card p-3 mt-3"><h6 class="text-danger">New findings (' + vis(d.findings['new']).length + ')</h6><table class="table table-sm findings-table"><tbody>' + frows(d.findings['new']) + '</tbody></table></div><div class="card p-3 mt-3"><h6 class="text-success">Fixed findings (' + vis(d.findings.fixed).length + ')</h6><table class="table table-sm findings-table"><tbody>' + frows(d.findings.fixed) + '</tbody></table></div>';
+          var ch = document.getElementById('chide'); if (ch) ch.addEventListener('change', function () { state.hideAccepted = ch.checked; document.getElementById('cgo').click(); });
         }).catch(function (e) { document.getElementById('cres').innerHTML = '<div class="alert alert-danger">' + esc(e) + '</div>'; }); });
     });
   }
@@ -323,14 +347,15 @@
     setNav('settings'); app.innerHTML = '<h4>Settings</h4><div id="st">Loading...</div>';
     api('api/info').then(function (i) { info = i; return loadSettings(); }).then(renderSettings).catch(function (e) { document.getElementById('st').innerHTML = '<div class="alert alert-danger">' + esc(e) + '</div>'; });
   }
-  function renderSettings(d) {
-    var el = document.getElementById('st'), ids = Object.keys(d.rules), cats = {}; ids.forEach(function (k) { cats[d.rules[k].category] = 1; });
+  /** Settings editor. opts (optional, used by the enterprise policy editor): el, readOnly, note, save(doc) -> promise of {settings, warnings}, reset() -> promise, exportUrl, exportName. */
+  function renderSettings(d, opts) {
+    opts = opts || {}; var el = opts.el || document.getElementById('st'), ids = Object.keys(d.rules), cats = {}; ids.forEach(function (k) { cats[d.rules[k].category] = 1; });
     var sevOptions = function (v) { return SEV.map(function (x) { return '<option value="' + x + '"' + (x === v ? ' selected' : '') + '>' + x.charAt(0) + x.slice(1).toLowerCase() + '</option>'; }).join(''); };
-    var ro = info.settingsReadOnly, dis = ro ? ' disabled' : '';
-    el.innerHTML = (ro ? '<div class="alert alert-info py-2 small"><i class="fa-solid fa-lock me-1"></i>The rule settings are read-only on this server (demo): the values below can be viewed and exported, and imported into your own installation.</div>' : '') +
-      '<div class="small-muted mb-3">' + (info.workspaces ? 'Stored on the server for your workspace (this browser)' : 'Stored on the server in the data directory (settings.json)') + ' and applied to every analysis' + (info.workspaces ? '' : ', from this browser or the command line') + '. Reports record the settings they were produced with.</div>' +
+    var ro = opts.readOnly !== undefined ? opts.readOnly : info.settingsReadOnly, dis = ro ? ' disabled' : '';
+    el.innerHTML = (ro ? '<div class="alert alert-info py-2 small"><i class="fa-solid fa-lock me-1"></i>' + (opts.readOnlyNote || 'The rule settings are read-only on this server (demo): the values below can be viewed and exported, and imported into your own installation.') + '</div>' : '') +
+      '<div class="small-muted mb-3">' + (opts.note !== undefined ? opts.note : (info.workspaces ? 'Stored on the server for your workspace (this browser)' : 'Stored on the server in the data directory (settings.json)') + ' and applied to every analysis' + (info.workspaces ? '' : ', from this browser or the command line') + '. Reports record the settings they were produced with.') + '</div>' +
       '<div class="d-flex flex-wrap gap-2 align-items-center mb-3"><button class="btn btn-primary btn-sm" id="stSave"' + dis + '><i class="fa-solid fa-floppy-disk me-1"></i>Save</button>' +
-      '<a class="btn btn-outline-secondary btn-sm" href="api/settings?download=1" download="twx-code-analyzer-settings.json"><i class="fa-solid fa-file-export me-1"></i>Export</a>' +
+      '<a class="btn btn-outline-secondary btn-sm" href="' + (opts.exportUrl || 'api/settings?download=1') + '" download="' + (opts.exportName || 'twx-code-analyzer-settings.json') + '"><i class="fa-solid fa-file-export me-1"></i>Export</a>' +
       '<button class="btn btn-outline-secondary btn-sm" id="stImport"' + dis + '><i class="fa-solid fa-file-import me-1"></i>Import</button><input type="file" id="stFile" accept=".json,application/json" hidden>' +
       '<button class="btn btn-outline-danger btn-sm" id="stReset"' + dis + '><i class="fa-solid fa-rotate-left me-1"></i>Reset to defaults</button>' +
       '<span class="small-muted">' + (d.customized ? '<i class="fa-solid fa-sliders me-1"></i>Custom settings active' : 'Built-in defaults') + '</span><span id="stMsg" class="small ms-2"></span></div>' +
@@ -350,25 +375,29 @@
     function shown() { return rows.filter(function (tr) { return !tr.hidden; }); }
     function markRow(tr) { var r = d.rules[tr.getAttribute('data-id')], en = tr.querySelector('.ren').checked, sv = tr.querySelector('.rsev').value, im = +tr.querySelector('.rimp').value; var c = !en || sv !== r.defaultSeverity || im !== r.defaultImpact; tr.querySelector('.rcust').innerHTML = c ? ' <span class="badge bg-info text-dark">customized</span>' : ''; tr.setAttribute('data-c', c ? '1' : '0'); tr.classList.toggle('text-secondary', !en); }
     rows.forEach(function (tr) { markRow(tr); tr.querySelectorAll('input,select').forEach(function (i) { i.addEventListener('change', function () { markRow(tr); }); }); });
-    function applyFilter() { var q = document.getElementById('rf').value.toLowerCase(), c = document.getElementById('rc').value, only = document.getElementById('rcust').checked; rows.forEach(function (tr) { tr.hidden = (q && tr.getAttribute('data-text').indexOf(q) < 0) || (c && tr.getAttribute('data-cat') !== c) || (only && tr.getAttribute('data-c') !== '1'); }); }
-    ['rf', 'rc', 'rcust'].forEach(function (id) { document.getElementById(id).addEventListener('input', applyFilter); document.getElementById(id).addEventListener('change', applyFilter); });
-    document.getElementById('rOn').addEventListener('click', function () { shown().forEach(function (tr) { tr.querySelector('.ren').checked = true; markRow(tr); }); });
-    document.getElementById('rOff').addEventListener('click', function () { shown().forEach(function (tr) { tr.querySelector('.ren').checked = false; markRow(tr); }); });
-    document.getElementById('rDef').addEventListener('click', function () { shown().forEach(function (tr) { var r = d.rules[tr.getAttribute('data-id')]; tr.querySelector('.ren').checked = true; tr.querySelector('.rsev').value = r.defaultSeverity; tr.querySelector('.rimp').value = r.defaultImpact; markRow(tr); }); });
+    function applyFilter() { var q = el.querySelector('#rf').value.toLowerCase(), c = el.querySelector('#rc').value, only = el.querySelector('#rcust').checked; rows.forEach(function (tr) { tr.hidden = (q && tr.getAttribute('data-text').indexOf(q) < 0) || (c && tr.getAttribute('data-cat') !== c) || (only && tr.getAttribute('data-c') !== '1'); }); }
+    ['rf', 'rc', 'rcust'].forEach(function (id) { el.querySelector('#' + id).addEventListener('input', applyFilter); el.querySelector('#' + id).addEventListener('change', applyFilter); });
+    el.querySelector('#rOn').addEventListener('click', function () { shown().forEach(function (tr) { tr.querySelector('.ren').checked = true; markRow(tr); }); });
+    el.querySelector('#rOff').addEventListener('click', function () { shown().forEach(function (tr) { tr.querySelector('.ren').checked = false; markRow(tr); }); });
+    el.querySelector('#rDef').addEventListener('click', function () { shown().forEach(function (tr) { var r = d.rules[tr.getAttribute('data-id')]; tr.querySelector('.ren').checked = true; tr.querySelector('.rsev').value = r.defaultSeverity; tr.querySelector('.rimp').value = r.defaultImpact; markRow(tr); }); });
     function collect() {
-      var doc = { format: 'twx-code-analyzer-settings', version: 1, includeToolkits: document.getElementById('stTk').checked, severityWeights: {}, thresholds: {}, rules: {} };
+      var doc = { format: 'twx-code-analyzer-settings', version: 1, includeToolkits: el.querySelector('#stTk').checked, severityWeights: {}, thresholds: {}, rules: {} };
       el.querySelectorAll('.sw').forEach(function (i) { if (i.value !== '') doc.severityWeights[i.getAttribute('data-k')] = +i.value; });
       el.querySelectorAll('.th').forEach(function (i) { if (i.value !== '') doc.thresholds[i.getAttribute('data-k')] = +i.value; });
       rows.forEach(function (tr) { doc.rules[tr.getAttribute('data-id')] = { enabled: tr.querySelector('.ren').checked, severity: tr.querySelector('.rsev').value, impact: +tr.querySelector('.rimp').value }; });
       return doc;
     }
-    function done(r, what) { var warn = r.warnings && r.warnings.length; renderSettings(r.settings); var m = document.getElementById('stMsg'); m.className = 'small ms-2 ' + (warn ? 'text-warning' : 'text-success'); m.textContent = what + (warn ? ' with warnings: ' + r.warnings.join('; ') : '.'); }
-    function fail(e) { var m = document.getElementById('stMsg'); m.className = 'small ms-2 text-danger'; m.textContent = String(e); }
-    document.getElementById('stSave').addEventListener('click', function () { saveSettings(collect()).then(function (r) { done(r, 'Saved'); }).catch(fail); });
-    document.getElementById('stReset').addEventListener('click', function () { if (!confirm('Reset every rule, weight and threshold to the built-in defaults?')) return; api('api/settings', { method: 'DELETE' }).then(function (r) { settingsCache = r.settings; done(r, 'Reset to defaults'); }).catch(fail); });
-    document.getElementById('stImport').addEventListener('click', function () { document.getElementById('stFile').click(); });
-    document.getElementById('stFile').addEventListener('change', function () { var f = this.files[0]; if (!f) return; var rd = new FileReader(); rd.onload = function () { var doc; try { doc = JSON.parse(rd.result); } catch (e) { fail('Not a JSON file: ' + e.message); return; } if (!doc || typeof doc !== 'object' || Array.isArray(doc)) { fail('Not a settings document'); return; } saveSettings(doc).then(function (r) { done(r, 'Imported ' + f.name); }).catch(fail); }; rd.readAsText(f); });
+    function done(r, what) { var warn = r.warnings && r.warnings.length; renderSettings(r.settings, opts); var m = el.querySelector('#stMsg'); m.className = 'small ms-2 ' + (warn ? 'text-warning' : 'text-success'); m.textContent = what + (warn ? ' with warnings: ' + r.warnings.join('; ') : '.'); }
+    function fail(e) { var m = el.querySelector('#stMsg'); m.className = 'small ms-2 text-danger'; m.textContent = String(e); }
+    var save = opts.save || saveSettings, reset = opts.reset || function () { return api('api/settings', { method: 'DELETE' }).then(function (r) { settingsCache = r.settings; return r; }); };
+    el.querySelector('#stSave').addEventListener('click', function () { save(collect()).then(function (r) { done(r, 'Saved'); }).catch(fail); });
+    el.querySelector('#stReset').addEventListener('click', function () { if (!confirm('Reset every rule, weight and threshold to the built-in defaults?')) return; reset().then(function (r) { done(r, 'Reset to defaults'); }).catch(fail); });
+    el.querySelector('#stImport').addEventListener('click', function () { el.querySelector('#stFile').click(); });
+    el.querySelector('#stFile').addEventListener('change', function () { var f = this.files[0]; if (!f) return; var rd = new FileReader(); rd.onload = function () { var doc; try { doc = JSON.parse(rd.result); } catch (e) { fail('Not a JSON file: ' + e.message); return; } if (!doc || typeof doc !== 'object' || Array.isArray(doc)) { fail('Not a settings document'); return; } save(doc).then(function (r) { done(r, 'Imported ' + f.name); }).catch(fail); }; rd.readAsText(f); });
   }
-  api('api/info').then(function (i) { info = i; var p = document.getElementById('privacy'); if (p) p.textContent = privacyLine(); }).catch(function () {});
-  route();
+  var TCA = window.TCA = { routes: {}, reportTabs: [], hooks: {}, state: state, api: api, esc: esc, nav: nav, setNav: setNav, sevBadge: sevBadge, fmtBytes: fmtBytes, modal: modal, download: download, historyTable: historyTable, deleteReport: deleteReport, renderSettings: renderSettings, loadSettings: loadSettings, uploadHtml: uploadHtml, bindUpload: bindUpload, home: home, history: history, compare: compare, rules: rules, settingsPage: settingsPage, findingDetail: findingDetail, route: route, SEV: SEV, app: app,
+    info: function () { return info; }, setInfo: function (i) { info = i; }, settings: function () { return settingsCache; } };
+  function start() { window.addEventListener('hashchange', route); route(); }
+  api('api/info').then(function (i) { info = i; var p = document.getElementById('privacy'); if (p) p.textContent = privacyLine();
+    if (i.enterprise) { var sc = document.createElement('script'); sc.src = 'enterprise.js'; sc.onload = start; sc.onerror = start; document.body.appendChild(sc); } else start(); }).catch(start);
 })();

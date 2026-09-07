@@ -1,6 +1,6 @@
 # Deployable web application
 
-The desktop package (jar + `run.sh` / `run.bat`) and the BAW embedding stay as they are. This document describes the additional delivery: the same engine and browser UI packaged as a web application archive (WAR) for a shared server, plus a container image built from the desktop jar.
+The desktop package (jar + `run.sh` / `run.bat`) and the BAW embedding stay as they are. This document describes how to deploy the web application archive (WAR) on a server and the container image built from the desktop jar. The features of the WAR (accounts, workspaces, policies, gates, repositories, API, help) and all its configuration options are documented in [WEB-APPLICATION.md](WEB-APPLICATION.md); the options below are the ones every deployment needs.
 
 ## Artifacts
 
@@ -88,7 +88,7 @@ Publish the port on localhost or behind an authenticating reverse proxy (same se
 
 ## Public demo server (nginx in front of Tomcat)
 
-This is the layout of the live demo at [https://twxca.com](https://twxca.com): Tomcat 10.1 with the Jakarta WAR as `ROOT.war`, listening on 127.0.0.1 only, run by a system user through systemd; nginx terminates TLS (certbot) and proxies to it. The demo runs with `workspaces=true`, `retentionDays=30` and `settingsReadOnly=true`, added as its own virtual host next to the other sites of the machine. Uploads are large and analyses take seconds to minutes, so raise the body size and the timeouts:
+This is the layout of the live demo at [https://twxca.com](https://twxca.com): Tomcat 10.1 with the Jakarta WAR as `ROOT.war`, listening on 127.0.0.1 only, run by a system user through systemd; nginx terminates TLS (certbot) and proxies to it. The demo runs with `demo=true`, `auth=builtin`, `signup=true`, `quotaMb=1024`, `retentionDays=30`, `workers=2` and `baseUrl=https://twxca.com/`, added as its own virtual host next to the other sites of the machine. Uploads are large and analyses take seconds to minutes, so raise the body size and the timeouts:
 
 ```
 server {
@@ -113,7 +113,7 @@ Tomcat `server.xml`: `<Connector address="127.0.0.1" port="8089" protocol="HTTP/
 User=twxca
 Environment=JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64
 Environment=CATALINA_HOME=/opt/twxca/tomcat
-Environment="CATALINA_OPTS=-Xms512m -Xmx4g -Dtca.data=/var/lib/twxca -Dtca.workspaces=true -Dtca.retentionDays=30 -Dtca.settingsReadOnly=true"
+Environment="CATALINA_OPTS=-Xms512m -Xmx4g -Dtca.data=/var/lib/twxca -Dtca.demo=true -Dtca.auth=builtin -Dtca.signup=true -Dtca.anonymous=true -Dtca.quotaMb=1024 -Dtca.maxUploadMb=512 -Dtca.retentionDays=30 -Dtca.workers=2 -Dtca.baseUrl=https://twxca.com/"
 ExecStart=/opt/twxca/tomcat/bin/catalina.sh run
 Restart=on-failure
 ```

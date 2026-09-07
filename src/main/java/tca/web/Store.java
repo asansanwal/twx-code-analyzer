@@ -17,6 +17,11 @@ public class Store {
     public String report(String id) throws IOException { return new String(Files.readAllBytes(new File(dir(id), "report.json").toPath()), StandardCharsets.UTF_8); }
     public byte[] twx(String id) throws IOException { return Files.readAllBytes(new File(dir(id), "upload.twx").toPath()); }
     public boolean exists(String id) { return new File(dir(id), "report.json").exists(); }
+    public File file(String id, String name) { return new File(dir(id), name); }
+    /** Rewrites the report JSON and the metadata of a stored analysis (kept upload untouched). */
+    public void rewrite(String id, String reportJson, Map<String, Object> meta) throws IOException { Files.write(new File(dir(id), "report.json").toPath(), reportJson.getBytes(StandardCharsets.UTF_8)); Files.write(new File(dir(id), "meta.json").toPath(), Json.writePretty(meta).getBytes(StandardCharsets.UTF_8)); }
+    /** Bytes used by the store (uploads, reports, metadata). */
+    public long size() { long n = 0; File[] ds = root.listFiles(); if (ds != null) for (File d : ds) { if (d.isFile()) n += d.length(); File[] fs = d.listFiles(); if (fs != null) for (File f : fs) n += f.length(); } return n; }
     /** Stored rule settings (data/settings.json), the defaults when the file is missing or unreadable. */
     public RuleSettings settings() { File f = new File(root, "settings.json"); if (!f.isFile()) return new RuleSettings(); try { return RuleSettings.fromJson(new String(Files.readAllBytes(f.toPath()), StandardCharsets.UTF_8)); } catch (Exception e) { System.err.println("settings.json ignored: " + e); return new RuleSettings(); } }
     public void saveSettings(RuleSettings s) throws IOException { File f = new File(root, "settings.json"); if (!s.isCustomized() && !s.includeToolkits) { f.delete(); return; } root.mkdirs(); Files.write(f.toPath(), Json.writePretty(s.toJson()).getBytes(StandardCharsets.UTF_8)); }

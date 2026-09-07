@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TWX Code Analyzer - Help</title>
+<link rel="stylesheet" href="../vendor/bootstrap.min.css">
+<link rel="stylesheet" href="../vendor/all.min.css">
+<style>
+body { background: #fff; font-size: 14px; }
+.toc { position: sticky; top: 12px; font-size: 13px; }
+.toc a { display: block; padding: 2px 0; color: #444; text-decoration: none; } .toc a:hover { color: #0d6efd; }
+h2 { margin-top: 36px; padding-top: 12px; border-top: 1px solid #e3e6ea; font-size: 20px; }
+h3 { margin-top: 22px; font-size: 16px; }
+code, pre { font-size: 12.5px; } pre { background: #f4f6f8; padding: 10px 12px; border-radius: 6px; }
+table { font-size: 13px; }
+.badge-sev { font-size: 11px; }
+.tip { background: #eef5ff; border-left: 4px solid #0d6efd; padding: 8px 12px; border-radius: 4px; margin: 10px 0; }
+.warn { background: #fff8e6; border-left: 4px solid #e07b13; padding: 8px 12px; border-radius: 4px; margin: 10px 0; }
+</style>
+</head>
+<body>
+<div class="container-fluid py-3">
+<div class="row">
+<div class="col-lg-3 col-xl-2">
+<nav class="toc">
+<div class="fw-semibold mb-1">Help</div>
+<a href="#overview">Overview</a>
+<a href="#accounts">Accounts and sign-in</a>
+<a href="#workspaces">Workspaces and teams</a>
+<a href="#dashboard">Dashboard</a>
+<a href="#analyze">Analyzing an export</a>
+<a href="#report">Reading a report</a>
+<a href="#findings">Findings</a>
+<a href="#accepted">Accepted findings (baseline)</a>
+<a href="#remediation">Remediation</a>
+<a href="#objects">Objects, diagrams, search</a>
+<a href="#toolkits">Toolkit usage</a>
+<a href="#exports">Exports</a>
+<a href="#compare">History and comparison</a>
+<a href="#settings">Settings and rule policies</a>
+<a href="#gates">Quality gates and verdicts</a>
+<a href="#notifications">Notifications</a>
+<a href="#processcenter">Process Center / Studio import</a>
+<a href="#cicd">CI / CD integration and API</a>
+<a href="#administration">Administration</a>
+<a href="#rules">The rules</a>
+<a href="#privacy">Privacy, retention and deletion</a>
+<a href="#deployment">Deployment options</a>
+<a href="#faq">Questions and answers</a>
+</nav>
+</div>
+<div class="col-lg-9 col-xl-8">
+
+<h1 class="h3">TWX Code Analyzer - user guide</h1>
+<p class="text-secondary">The web application edition: everything of the analyzer plus accounts, workspaces, policies, quality gates, queued analyses, Process Center import, notifications and an API for pipelines. Sections marked <span class="badge bg-warning text-dark">admin</span> need an administrator.</p>
+
+<h2 id="overview">Overview</h2>
+<p>TWX Code Analyzer reads an IBM BPM / Business Automation Workflow export (<code>.twx</code>) and runs more than 150 static-analysis rules over its services, processes, coach views, business objects, scripts, toolkits and configuration. The result is a ranked list of findings with the exact artifact path, the offending line, the reason and the remediation, plus diagrams, artifact browsing, toolkit usage, search, exports and comparisons between snapshots.</p>
+<p>The typical flow: <b>Analyze</b> an export (upload or Process Center import) &rarr; open the <b>report</b> (findings, overview, remediation) &rarr; accept what is not a real problem &rarr; fix the rest &rarr; analyze the next snapshot and <b>compare</b>. Teams formalise this with a <b>rule policy</b> and a <b>quality gate</b> that gives every analysis a pass / fail verdict, usable from a pipeline through the API.</p>
+
+<h2 id="accounts">Accounts and sign-in</h2>
+<p>Depending on how the server is configured you are identified by the company single sign-on (the container's security or a trusted header set by the reverse proxy), by a built-in account (sign up with an e-mail address and a password) or not at all (anonymous demo workspace).</p>
+<ul>
+<li><b>Sign up / Sign in</b> (top right) create and open a built-in account. Signed-in users keep their analyses, rule settings and accepted findings across sessions, browsers and devices, until they delete them.</li>
+<li><b>Account</b> (user menu) shows your profile, changes the password, manages <b>personal access tokens</b> for scripts and pipelines, and offers <b>Purge all my analyses</b> and <b>Delete my account</b> (removes everything: analyses, settings, accepted findings, tokens and the account).</li>
+<li><b>Anonymous demo</b>: without an account the browser gets a private, temporary workspace (a cookie); it is purged after the retention period of the server. Rule settings are read-only there.</li>
+<li><b>Administrators</b> are designated by the server operator in a properties file; they see the Administration page.</li>
+</ul>
+<div class="tip">Sign-in security: passwords are stored as salted PBKDF2 hashes, sessions are HttpOnly cookies valid for 30 days, ten failed logins lock the account for 15 minutes.</div>
+
+<h2 id="workspaces">Workspaces and teams</h2>
+<p>Everything you see (history, dashboard, settings, accepted findings) belongs to the <b>current workspace</b>, shown in the workspace menu at the top right.</p>
+<ul>
+<li><b>Personal</b>: your own analyses; only you see them.</li>
+<li><b>Team</b>: a shared workspace created by an administrator. Members see the same analyses, the same policy and the same accepted findings, so a team can run one baseline for its application. <b>Team admins</b> (named in the team) manage the team's policy, gates, notifications and accepted findings; other members can analyze, export and delete.</li>
+</ul>
+<p>Switch between workspaces in the menu; the choice is remembered in the browser (cookie <code>tca_scope</code>). API clients select a team with the header <code>X-TCA-Workspace: team:&lt;id&gt;</code>.</p>
+
+<h2 id="dashboard">Dashboard</h2>
+<p>The landing page of a workspace: totals (applications, analyses, average health, gate failures, storage), one row per application with its latest snapshot, health, change since the previous analysis, open findings, gate verdict and a health trend line over all its analyses, the applications that need attention (lowest health), the most frequent rules across the latest analyses and the recent analyses. Click a row to open the latest report.</p>
+
+<h2 id="analyze">Analyzing an export</h2>
+<ol>
+<li>Export the process application from Process Center (or use the <a href="#processcenter">Process Center page</a> to let the server do it).</li>
+<li><b>Analyze</b>: drop the <code>.twx</code> file. <i>Also analyze the bundled toolkits</i> includes the non-system toolkits of the export in the rules (system toolkits such as System Data or the UI Toolkit are never analyzed).</li>
+<li>The analysis is <b>queued</b>: the server runs a fixed number of analyses at a time (workers) and shows the queue position, then the progress (rule n of m). Large exports take up to a few minutes. You can leave the page; the <b>Queue</b> entry of the user menu lists your jobs, and the History shows the report when it is done.</li>
+</ol>
+<div class="warn">A workspace may have a storage quota; when it is exceeded the upload is refused with "quota exceeded" and older analyses must be deleted first. On some servers the uploaded file is discarded after the analysis (server policy): the report stays, but artifact browsing, diagrams and search are then not available for it.</div>
+
+<h2 id="report">Reading a report</h2>
+<p>The header shows the application, snapshot, file, product version of the export, the <b>health score</b> (100 = no open findings; it decays with the weighted score relative to the size of the application), the <b>gate verdict</b> and the <b>policy</b> the report was analysed with, the <b>Executive PDF</b> (one-page management summary) and <b>Delete</b> (permanent). Notes below the header report loader diagnostics and analysis coverage (scripts skipped because of syntax errors).</p>
+<p>Tabs: <b>Findings</b>, <b>Overview</b> (counts, charts, inventory, top rules, toolkits), <b>Objects &amp; Diagrams</b>, <b>Toolkit Usage</b>, <b>TWX Search</b>, <b>Remediation</b>.</p>
+
+<h2 id="findings">Findings</h2>
+<p>Every finding has a severity (Critical, Major, Minor, Info), a <b>score</b> = severity weight &times; rule impact (the ranking key), the rule, the artifact path (application / type / artifact / step or script), the message, the evidence with the line and the source snippet, and the remediation. Findings marked <i>review</i> come from heuristic rules and need a confirmation in context.</p>
+<p>Filter by severity, category, rule, artifact type, confidence and free text; sort by rank, artifact or rule; export CSV, HTML or PDF of the current selection. Click a finding for the detail: why it matters, what to do, <b>Show in diagram</b> (opens the artifact with the step highlighted) and, for workspace managers, <b>Accept finding</b>.</p>
+
+<h2 id="accepted">Accepted findings (baseline)</h2>
+<p>Not every finding is a defect to fix now: false positives, known technical debt, risks accepted by the owner. <b>Accept finding</b> (in the finding detail) records a reason with your name and date. Accepted findings:</p>
+<ul>
+<li>stay in the report, marked <span class="badge bg-success">accepted</span>, hidden by default (<i>show accepted</i> in the filter bar);</li>
+<li>do not count in the open findings, the weighted score, the health score, the verdict, the dashboard or the executive summary;</li>
+<li>apply to <b>every</b> report of the workspace, past and future, as long as the same finding exists (same rule, artifact, step and location): after a fix the finding disappears by itself, and a new snapshot keeps the baseline;</li>
+<li>can be reopened at any time (<b>Reopen finding</b>). The Compare page can hide accepted findings so only real regressions show.</li>
+</ul>
+<p>Accepting requires the manage right on the workspace (owner of a personal workspace, team admin, administrator). Every acceptance is in the audit trail.</p>
+
+<h2 id="remediation">Remediation</h2>
+<p>The Remediation tab groups the open findings by artifact in <b>fix order</b>: the artifact with the highest weighted score first, with its severity mix and every finding with its remediation. Buttons open the artifact in the diagram view and, when the server or the Process Center connection defines a designer link template, in Process Designer.</p>
+
+<h2 id="objects">Objects, diagrams and search</h2>
+<p><b>Objects &amp; Diagrams</b> lists every artifact of the application (and of the toolkits on request) grouped by type, services grouped by kind. Selecting one shows its findings, the service or process diagram from the Process Designer coordinates (flagged steps in red; click a step for its scripts, mappings and findings), variables, steps or flow objects with lanes and assignments, scripts, coach view options and resources, business object schema with nested types resolved, managed asset content, references and referenced-by lists, and the raw XML on request.</p>
+<p><b>TWX Search</b> searches text or regular expressions over names, scripts, conditions, mappings, documentation and raw XML, filtered by artifact type and toolkits.</p>
+
+<h2 id="toolkits">Toolkit usage</h2>
+<p>Which toolkit artifacts does the application really use? <b>Used</b>: an application artifact references the toolkit artifact by id. <b>Possible usage</b>: an application script instantiates a business object by name that only this toolkit declares. <b>No detected usage</b> is not proof that the toolkit can be removed: runtime lookups by name and references from other toolkits still need a review. Duplicate snapshots of the same toolkit are merged; the report is exportable as HTML, PDF and CSV.</p>
+
+<h2 id="exports">Exports</h2>
+<table class="table table-sm">
+<tr><th>Export</th><th>Where</th><th>Content</th></tr>
+<tr><td>CSV, HTML, PDF</td><td>Findings tab</td><td>The filtered findings with path, message, evidence, remediation</td></tr>
+<tr><td>Executive PDF</td><td>Report header</td><td>One page: health, verdict, policy, trend over the previous analyses, top risks by artifact, most frequent rules</td></tr>
+<tr><td>HTML, PDF, CSV</td><td>Toolkit Usage tab</td><td>Usage of the selected toolkits</td></tr>
+<tr><td>JSON</td><td>API</td><td>The full report, the summary, the verdict, the remediation groups</td></tr>
+<tr><td>Settings JSON</td><td>Settings, policies</td><td>Rule settings, importable into another workspace or installation</td></tr>
+</table>
+
+<h2 id="compare">History and comparison</h2>
+<p><b>History</b> lists the analyses of the workspace with health, findings and the trash button (permanent deletion of the uploaded file, the report and the metadata). <b>Compare</b> takes two analyses of the same application and reports added, removed and changed artifacts, toolkit version changes, and the findings that are new (regressions) or fixed; <i>Hide accepted findings</i> keeps the baseline out of the picture.</p>
+
+<h2 id="settings">Settings and rule policies</h2>
+<p>The <b>Settings</b> page configures the current workspace:</p>
+<ul>
+<li><b>Rule policy</b>: which rule settings every analysis of the workspace uses. <i>Built-in defaults</i> (every rule with its default severity), <i>Workspace settings</i> (the rules edited on this page) or a <b>central policy</b> published by an administrator (Administration &gt; Policies). Reports record the policy and its version.</li>
+<li><b>Quality gate</b> of the workspace (used with the built-in defaults or the workspace settings; a central policy carries its own gate).</li>
+<li><b>Notifications</b> (webhook, e-mail).</li>
+<li><b>Rules</b>: with <i>Workspace settings</i> selected, every rule can be disabled or given another severity and impact (1..3); the four severity weights and the thresholds of the size and complexity rules are editable; filter, bulk enable / disable / defaults, <b>Export</b> as a JSON file and <b>Import</b> (full or partial files, validated with warnings), <b>Reset to defaults</b>.</li>
+</ul>
+<p>Saving the workspace re-evaluates the existing reports (accepted findings and verdict) so the History and the Dashboard stay consistent.</p>
+
+<h2 id="gates">Quality gates and verdicts</h2>
+<p>A quality gate is a set of limits: health score at least N, Critical / Major / Minor / open findings at most N, weighted score at most N, and per-rule limits (for example <code>TCA-JS-006=0</code>: no hard-coded credentials). After each analysis every limit becomes a check with its actual value; the <b>verdict</b> is <i>passed</i> when every check passed, <i>failed</i> otherwise, and <i>no gate</i> when no limit is configured. Accepted findings are excluded before the checks run.</p>
+<p>The verdict is shown in the report header and the dashboard, sent with notifications, printed in the executive PDF, and available to pipelines: <code>GET api/report/&lt;id&gt;/verdict</code> answers HTTP 200 (passed or no gate) or HTTP 422 (failed) with the checks.</p>
+
+<h2 id="notifications">Notifications</h2>
+<p>Per workspace (Settings): a <b>webhook</b> receives a JSON POST (event, application, snapshot, health, findings by severity, gate checks, policy, report link) and <b>e-mail recipients</b> receive a plain-text summary when the server has SMTP configured. Choose <i>every completed analysis</i> and / or <i>only when the quality gate fails</i>. Webhooks work with chat tools, ticketing systems and automation platforms that accept JSON.</p>
+
+<h2 id="processcenter">Process Center and Business Automation Studio import</h2>
+<p>The <b>Process Center</b> page lists the process applications and snapshots of a Process Center and imports a snapshot directly: the server logs in, exports the snapshot exactly like the console does, queues the analysis and shows the report. The Process Center URL is an input on the page: type it with your user name and password, or pick a saved definition. <b>Save this Process Center in my workspace</b> keeps the URL, the user name and the password on the server for your workspace (or your team's), so the list opens with one click next time; saved definitions can be deleted at any time. Administrators can also share definitions with everyone (Administration &gt; Process Center connections). Values typed on the page override a saved definition for the current request. Self-signed certificates are accepted after a first failed handshake. Toolkits are not listed; analyze them through the applications that bundle them.</p>
+
+<p><b>Business Automation Studio</b> (Cloud Pak for Business Automation, Workflow Authoring) is supported as a second repository type: choose it, enter the platform URL (the Cloud Pak / Zen address), the context root of Workflow Authoring (default <code>/bas</code>) and how to authenticate: Zen with user name and password or with user name and API key (the server obtains a platform token from <code>/icp4d-api/v1/authorize</code>), a bearer token you paste, or basic authentication where the gateway allows it. Listing and export then use the same repository API as a Process Center. This path was validated against a Studio simulator that mirrors the documented platform behaviour, not against a live Cloud Pak: if your Studio answers differently, the error message shows what it returned.</p>
+
+<h2 id="cicd">CI / CD integration and API</h2>
+<p>Every function of the application is an HTTP API described by an <b>OpenAPI document</b> (<code>api/openapi.json</code>) and browsable in the <b>API</b> page (Swagger UI) linked in the navigation bar. Authenticate with a <b>personal access token</b> (Account page): <code>Authorization: Bearer &lt;token&gt;</code>. Team workspace: header <code>X-TCA-Workspace: team:&lt;id&gt;</code>.</p>
+<p>Pipeline recipe (shell):</p>
+<pre>BASE=https://analyzer.example.com; TOKEN=tca_...
+# 1. queue the analysis (multipart upload)
+JOB=$(curl -sf -H "Authorization: Bearer $TOKEN" -F file=@MyApp.twx "$BASE/api/analyze?async=1" | jq -r .id)
+# 2. wait for the report
+while :; do J=$(curl -sf -H "Authorization: Bearer $TOKEN" "$BASE/api/jobs/$JOB"); S=$(echo "$J" | jq -r .status)
+  [ "$S" = done ] && break; [ "$S" = failed ] && { echo "$J"; exit 1; }; sleep 5; done
+REPORT=$(echo "$J" | jq -r .reportId)
+# 3. the verdict: HTTP 422 fails the build
+curl -sf -H "Authorization: Bearer $TOKEN" "$BASE/api/report/$REPORT/verdict" || { echo "quality gate failed"; exit 1; }</pre>
+<p>One call for a Process Center snapshot (export, analysis and verdict; the client timeout must allow minutes for large exports):</p>
+<pre>curl -sf --max-time 1800 -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"url":"https://pc.example.com:9443","user":"ci-user","password":"...","app":"MYAPP","snapshot":"1.4.0"}' \
+  "$BASE/api/enterprise/pc/evaluate" || { echo "quality gate failed"; exit 1; }
+# a stored connection instead of URL and credentials: {"connection":"pc","app":"MYAPP","snapshot":"1.4.0"}
+# the tip of a track instead of a named snapshot: {"connection":"pc","app":"MYAPP","track":"Main"}</pre>
+<p>Alternatives: <code>POST api/analyze?gate=1</code> runs synchronously and answers 422 on a failed gate in one call; <code>api/report/&lt;id&gt;/summary</code> gives the numbers without the findings; <code>api/report/&lt;id&gt;/pdf</code> and <code>executive.pdf</code> attach reports to a build; <code>api/enterprise/pc/import</code> lets a pipeline analyze a snapshot straight from Process Center. Monitoring: <code>api/health</code> (liveness) and <code>api/metrics</code> (Prometheus).</p>
+
+<h2 id="administration">Administration <span class="badge bg-warning text-dark">admin</span></h2>
+<ul>
+<li><b>Policies</b>: create named rule policies (rules, severities, impacts, weights, thresholds, quality gate). Each save increments the version; reports record the policy and version. Workspaces select a policy in their Settings.</li>
+<li><b>Teams</b>: shared workspaces with members, team admins and an optional directory group (matched against the groups header of the single sign-on). Deleting a team can delete its workspace files.</li>
+<li><b>Users</b> (built-in accounts): list accounts with their storage, disable or enable, reset a password, delete an account with its workspace. Administrators are designated in the admins properties file on the server, not in the UI.</li>
+<li><b>Process Center connections</b>: stored connections with a read-only account and a designer link template (placeholders <code>{branchId}</code>, <code>{snapshotId}</code>, <code>{projectId}</code>, <code>{objectId}</code>).</li>
+<li><b>Audit trail</b>: analyses, deletions, settings and policy changes, accepted findings, sign-ups and logins, account and team administration; newest first, also written to the server log as JSON lines.</li>
+<li><b>Server</b>: health, the options in force and the metrics.</li>
+</ul>
+
+<h2 id="rules">The rules</h2>
+<p>The <b>Rules</b> page lists every rule with its category, effective severity and impact, description, remediation and the reference it comes from (legacy code analyzer rules re-implemented for static analysis, IBM checkstyle and best-practice rules, JavaScript static analysis). Rules marked <i>disabled</i> or <i>customized</i> reflect the policy of the current workspace. Categories: Application, Dependencies, Services, Processes, Scripts, Syntax tree, Coaches, Business objects, Quality, Configuration and more.</p>
+
+<h2 id="privacy">Privacy, retention and deletion</h2>
+<ul>
+<li>Uploads are parsed on the server and stored with their report in the workspace of the uploader; nobody else sees them (personal) or only the team (team workspace). The analyzer makes no outbound connection of its own, except Process Center exports and notifications that you configure.</li>
+<li><b>Delete</b> (report header, History, Dashboard) removes the uploaded file, the report and the metadata immediately and permanently.</li>
+<li>Signed-in users keep their data until they delete it, purge the workspace or delete the account. Anonymous demo workspaces are purged after the retention period shown on the Analyze page.</li>
+<li>TWX exports contain source code and configuration: on a public server, only upload what you are allowed to store there.</li>
+</ul>
+
+<h2 id="deployment">Deployment options</h2>
+<p>For server operators. Every option is a servlet context parameter, a JVM property (<code>-Dtca.xxx</code>) or an environment variable (<code>TCA_XXX</code>); the Administration &gt; Server page shows the values in force.</p>
+<table class="table table-sm">
+<tr><th>Option</th><th>Default</th><th>Meaning</th></tr>
+<tr><td>dataDir</td><td>temp dir</td><td>Directory for uploads, reports, workspaces, accounts, policies, audit</td></tr>
+<tr><td>enterprise</td><td>true</td><td>false = the plain 1.2 web application without accounts, policies and the other features described here</td></tr>
+<tr><td>demo</td><td>false</td><td>Demo server: anonymous temporary workspaces, read-only settings for anonymous visitors, no teams for non-administrators; accounts still work</td></tr>
+<tr><td>auth</td><td>builtin</td><td>builtin (sign-up / login), container (remote user of the container or a trusted header), none</td></tr>
+<tr><td>anonymous</td><td>= demo</td><td>Allow anonymous workspaces (cookie); false = sign-in required</td></tr>
+<tr><td>signup</td><td>true</td><td>Self-service registration (builtin)</td></tr>
+<tr><td>userHeader / groupsHeader</td><td></td><td>Trusted headers set by the reverse proxy or single sign-on (for example X-Forwarded-User, X-Forwarded-Groups)</td></tr>
+<tr><td>adminRole / adminGroup / admins / adminsFile</td><td>tca-admin</td><td>Who is an administrator: container role, directory group, list, or the properties file (default &lt;dataDir&gt;/enterprise/admins.properties)</td></tr>
+<tr><td>personalSettings</td><td>true</td><td>Users may edit rule settings in their personal workspace (false = policies only)</td></tr>
+<tr><td>processCenter / pcInlineCredentials</td><td>true</td><td>Process Center integration; whether users may enter their own credentials</td></tr>
+<tr><td>notifications, smtpHost, smtpPort, smtpUser, smtpPassword, smtpFrom, smtpSecurity</td><td></td><td>Notifications and the SMTP server (security none, ssl or starttls)</td></tr>
+<tr><td>workers</td><td>2</td><td>Analyses run at the same time (each needs about 1 GB of heap for a 40 MB export)</td></tr>
+<tr><td>quotaMb</td><td>0</td><td>Storage quota per workspace (0 = none)</td></tr>
+<tr><td>keepUploads</td><td>true</td><td>false = delete the uploaded file after the analysis (report only)</td></tr>
+<tr><td>retentionDays</td><td>0</td><td>Purge anonymous workspaces older than N days; signed-in users are never purged</td></tr>
+<tr><td>designerUrl</td><td></td><td>Default designer link template for the Remediation tab</td></tr>
+<tr><td>baseUrl</td><td></td><td>Public URL of the application, used for links in notifications</td></tr>
+<tr><td>maxUploadMb / maxQueue</td><td>512 / 20</td><td>Largest accepted upload; analyses waiting in the queue before new ones are refused (429)</td></tr>
+<tr><td>outboundHosts / outboundPrivate</td><td>any / true (false in demo mode)</td><td>Hosts the server may call for Process Center, Studio and webhooks (comma-separated suffixes); whether loopback, private and site-local addresses may be called</td></tr>
+<tr><td>audit</td><td>true</td><td>Audit trail</td></tr>
+<tr><td>title</td><td>TWX Code Analyzer</td><td>Name shown in the navigation bar and the API documentation</td></tr>
+</table>
+
+<h2 id="faq">Questions and answers</h2>
+<p><b>Why did the health score change without a new analysis?</b> Accepting or reopening findings and changing the workspace policy re-evaluate the stored reports.</p>
+<p><b>Why is a finding marked "review"?</b> Its rule matches a pattern that is usually a problem but needs a look in context; filter with the confidence selector.</p>
+<p><b>Can I move my rule settings to another installation?</b> Yes: export the settings or the policy as JSON and import it there, or in the desktop app.</p>
+<p><b>A report says the upload was discarded.</b> The server keeps only reports (option keepUploads=false); analyze the export again if you need diagrams or search.</p>
+<p><b>Where are the numbers in the health score from?</b> score = severity weight (Critical 100, Major 40, Minor 10, Info 2, or the weights of the policy) &times; rule impact (1..3); health = 100 &times; e<sup>-density / 40</sup> with density = total score / max(50, artifacts of the application).</p>
+<p class="text-secondary mt-5">TWX Code Analyzer - MIT License. Static analysis is advisory: confirm findings in the application context before changing production logic.</p>
+</div>
+</div>
+</div>
+</body>
+</html>
