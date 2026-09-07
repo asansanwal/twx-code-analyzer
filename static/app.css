@@ -1,0 +1,35 @@
+body { background: #f4f6f8; }
+.card { border: 1px solid #dfe3e8; box-shadow: 0 1px 2px rgba(0,0,0,.04); }
+.sev-CRITICAL { color: #b02a37; } .sev-MAJOR { color: #c4620a; } .sev-MINOR { color: #0a6ab5; } .sev-INFO { color: #6c757d; }
+.badge.sev-CRITICAL { background: #b02a37; color: #fff; } .badge.sev-MAJOR { background: #e07b13; color: #fff; } .badge.sev-MINOR { background: #0d6efd; color: #fff; } .badge.sev-INFO { background: #6c757d; color: #fff; }
+.dropzone { border: 2px dashed #9aa5b1; border-radius: 8px; padding: 40px; text-align: center; background: #fff; cursor: pointer; }
+.dropzone.drag { border-color: #0d6efd; background: #eef5ff; }
+.findings-table td { vertical-align: top; font-size: 13px; }
+.findings-table tr.selectable { cursor: pointer; }
+.findings-table tr.selectable:hover { background: #eef5ff; }
+.path { font-family: Menlo, Consolas, monospace; font-size: 12px; color: #444; word-break: break-word; }
+.mono { font-family: Menlo, Consolas, monospace; font-size: 12px; white-space: pre-wrap; word-break: break-word; }
+pre.code { background: #1f2430; color: #e6e6e6; padding: 10px; border-radius: 6px; font-size: 12px; max-height: 420px; overflow: auto; }
+pre.code .hl { background: #6b3b00; }
+.diagram-wrap { background: #fff; border: 1px solid #dfe3e8; border-radius: 6px; overflow: auto; max-height: 70vh; position: relative; }
+.diagram-wrap svg { font-family: system-ui, sans-serif; font-size: 11px; }
+.node rect, .node ellipse, .node polygon { stroke: #5a6b7b; stroke-width: 1.2; fill: #fff; }
+.node.kind-script rect { fill: #fff7e0; } .node.kind-call rect { fill: #e8f1fb; } .node.kind-coach rect { fill: #e9f7ef; } .node.kind-decision polygon { fill: #fff3cd; } .node.kind-exit ellipse, .node.kind-start ellipse { fill: #d9edf7; }
+.node.kind-integration rect, .node.kind-content rect { fill: #efe6ff; } .node.kind-activity rect { fill: #e8f1fb; } .node.kind-gateway polygon { fill: #fff3cd; } .node.kind-event ellipse { fill: #d9edf7; }
+.node.flagged rect, .node.flagged ellipse, .node.flagged polygon { stroke: #b02a37; stroke-width: 3; fill: #fde2e4 !important; }
+.node.selected rect, .node.selected ellipse, .node.selected polygon { stroke: #0d6efd; stroke-width: 3; }
+.node text { pointer-events: none; }
+.edge { stroke: #7a8794; stroke-width: 1.4; fill: none; } .edge.error { stroke: #b02a37; stroke-dasharray: 5 3; } .edge.default { stroke-width: 2.2; }
+.edge-label { font-size: 10px; fill: #555; }
+.lane rect { fill: #fafbfc; stroke: #c9d1d9; } .lane.system rect { fill: #f2f4f6; } .lane text { font-weight: 600; fill: #333; }
+.stat { font-size: 26px; font-weight: 600; }
+.small-muted { font-size: 12px; color: #6c757d; }
+.tree ul { list-style: none; padding-left: 16px; } .tree li { cursor: pointer; padding: 1px 0; } .tree li:hover { color: #0d6efd; }
+.sticky-top-2 { position: sticky; top: 0; background: #fff; z-index: 2; }
+.legend span { display: inline-block; width: 12px; height: 12px; border: 1px solid #5a6b7b; margin-right: 4px; vertical-align: middle; }
+#app h5 { font-weight: 600; }
+.remediation { background: #eefaf0; border-left: 4px solid #28a745; padding: 8px 12px; border-radius: 4px; }
+.description { background: #f4f6f8; border-left: 4px solid #6c757d; padding: 8px 12px; border-radius: 4px; }
+.evidence { background: #fff8e6; border-left: 4px solid #e07b13; padding: 6px 12px; border-radius: 4px; font-family: Menlo, Consolas, monospace; font-size: 12px; }
+.score-pill { font-size: 12px; padding: 2px 8px; border-radius: 10px; background: #e9ecef; }
+.health { font-size: 40px; font-weight: 700; }
