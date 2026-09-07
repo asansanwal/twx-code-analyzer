@@ -1,13 +1,12 @@
-/* TWX Code Analyzer - single page UI (no framework). Routes: #/ (analyze), #/report/<id>, #/history, #/compare, #/rules */
+/* TWX Code Analyzer - single page UI (no framework). Routes: #/ (analyze), #/report/<id>, #/history, #/compare, #/rules, #/settings. All URLs are relative (the app also runs under a servlet context root). */
 (function () {
   var app = document.getElementById('app'), state = { id: null, report: null, objects: null, filter: { sev: {}, cat: '', rule: '', q: '', type: '', conf: '' }, sort: 'score' };
-  /* rule thresholds (name, default, label); values changed in Settings are sent with each analysis */
-  var THRESHOLDS = [['scriptLinesMedium', 100, 'Script length: medium warning (lines)'], ['scriptLinesHigh', 300, 'Script length: high warning (lines)'], ['complexity', 30, 'Cyclomatic complexity per script'], ['logStatements', 5, 'Log statements per script'],
-    ['serviceSteps', 40, 'Steps per service'], ['serviceParams', 15, 'Parameters per service'], ['privateVariables', 30, 'Private variables per service / process'], ['assignmentsPerStep', 10, 'Pre/post assignments per step'], ['coachesPerService', 5, 'Coaches per human service'], ['stepsBeforeCoach', 5, 'Steps before the first coach'], ['sequentialActivities', 5, 'Sequential system activities in a process'],
-    ['bpdFlowObjects', 30, 'Flow objects per process'], ['searchableFields', 25, 'Searchable business data fields'], ['contextAttributes', 150, 'Execution context attributes (variables x properties)'], ['boAttributes', 50, 'Properties per business object'], ['nestedCshs', 25, 'Nested coach views per coach'], ['coachControls', 500, 'Controls per coach'], ['coachViewJsLines', 300, 'JavaScript lines per coach view'], ['viewResources', 4, 'Included files per coach view'],
-    ['assetKb', 300, 'Managed asset size (KB)'], ['toolkits', 25, 'Toolkit dependencies'], ['toolkitDepth', 4, 'Toolkit dependency depth'], ['toolkitSizeMb', 50, 'Toolkit size (MB)']];
-  function settings() { try { return JSON.parse(localStorage.getItem('tca.settings') || '{}'); } catch (e) { return {}; } }
-  function saveSettings(o) { try { localStorage.setItem('tca.settings', JSON.stringify(o)); } catch (e) {} }
+  /* rule settings (enabled / severity / impact per rule, severity weights, thresholds) are stored by the server in the data directory (api/settings) and apply to every analysis */
+  var settingsCache = null, info = { workspaces: false, retentionDays: 0, settingsReadOnly: false };
+  function privacyLine() { return info.workspaces ? 'Uploaded files stay in your private workspace on this server (this browser only) until you delete them' + (info.retentionDays ? ', or after ' + info.retentionDays + ' days' : '') + '. Deleting an analysis removes the file and its report permanently.' : 'The file is parsed locally; nothing leaves this machine.'; }
+  function deleteReport(id, after) { if (!confirm('Delete this analysis permanently? The uploaded file and its report are removed from the server and cannot be recovered.')) return; api('api/report/' + id, { method: 'DELETE' }).then(function () { if (state.id === id) { state.id = null; state.report = null; state.objects = null; } after(); }).catch(function (e) { alert(e); }); }
+  function loadSettings() { return api('api/settings').then(function (d) { settingsCache = d; return d; }); }
+  function saveSettings(doc) { return api('api/settings', { method: 'PUT', body: JSON.stringify(doc) }).then(function (r) { settingsCache = r.settings; return r; }); }
   function download(name, content, type) { var a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([content], { type: type })); a.download = name; a.click(); }
   var SEV = ['CRITICAL', 'MAJOR', 'MINOR', 'INFO'];
   function esc(s) { return String(s === undefined || s === null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
@@ -36,8 +35,9 @@
     setNav('home'); document.getElementById('current-report').textContent = '';
     app.innerHTML = '<div class="row justify-content-center"><div class="col-lg-8">' +
       '<h4 class="mb-3">Analyze a TWX export</h4>' +
-      '<div class="dropzone" id="dz"><i class="fa-solid fa-file-zipper fa-2x mb-2 text-secondary"></i><div>Drop a <b>.twx</b> file here or click to choose</div><div class="small-muted mt-1">The file is parsed locally; nothing leaves this machine.</div><input type="file" id="file" accept=".twx,.zip" hidden></div>' +
-      '<div class="form-check mt-3"><input class="form-check-input" type="checkbox" id="optToolkits"' + (settings().toolkitsDefault ? ' checked' : '') + '><label class="form-check-label" for="optToolkits">Also analyze the bundled (non-system) toolkits</label></div>' +
+      '<div class="dropzone" id="dz"><i class="fa-solid fa-file-zipper fa-2x mb-2 text-secondary"></i><div>Drop a <b>.twx</b> file here or click to choose</div><div class="small-muted mt-1" id="privacy">' + esc(privacyLine()) + '</div><input type="file" id="file" accept=".twx,.zip" hidden></div>' +
+      '<div class="form-check mt-3"><input class="form-check-input" type="checkbox" id="optToolkits"' + (settingsCache && settingsCache.includeToolkits ? ' checked' : '') + '><label class="form-check-label" for="optToolkits">Also analyze the bundled (non-system) toolkits</label></div>' +
+      '<div class="small-muted mt-1" id="homeSettings"></div>' +
       '<div id="progress" class="mt-3"></div>' +
       '<div class="mt-4" id="recent"></div></div></div>';
     var dz = document.getElementById('dz'), fi = document.getElementById('file');
@@ -45,13 +45,15 @@
     ['dragenter', 'dragover'].forEach(function (e) { dz.addEventListener(e, function (ev) { ev.preventDefault(); dz.classList.add('drag'); }); });
     ['dragleave', 'drop'].forEach(function (e) { dz.addEventListener(e, function (ev) { ev.preventDefault(); dz.classList.remove('drag'); }); });
     dz.addEventListener('drop', function (ev) { if (ev.dataTransfer.files[0]) upload(ev.dataTransfer.files[0]); });
-    api('/api/history').then(function (h) { if (!h.length) return; document.getElementById('recent').innerHTML = '<h6>Recent analyses</h6>' + historyTable(h.slice(0, 8)); });
+    function recent() { api('api/history').then(function (h) { var el = document.getElementById('recent'); if (!el) return; el.innerHTML = h.length ? '<h6>Recent analyses</h6>' + historyTable(h.slice(0, 8)) : ''; el.querySelectorAll('[data-del]').forEach(function (b) { b.addEventListener('click', function () { deleteReport(b.getAttribute('data-del'), recent); }); }); }); }
+    recent();
+    loadSettings().then(function (d) { document.getElementById('optToolkits').checked = !!d.includeToolkits; var n = Object.keys(d.rules).filter(function (k) { return d.rules[k].customized; }).length, off = Object.keys(d.rules).filter(function (k) { return !d.rules[k].enabled; }).length;
+      document.getElementById('homeSettings').innerHTML = d.customized ? '<i class="fa-solid fa-sliders me-1"></i>Custom rule settings are active: ' + n + ' rule(s) customized' + (off ? ', ' + off + ' disabled' : '') + '. <a href="#/settings">Settings</a>' : 'Built-in rule settings (every rule enabled with its default severity). <a href="#/settings">Settings</a>'; });
   }
   function upload(file) {
     var fd = new FormData(); fd.append('file', file); var tk = document.getElementById('optToolkits').checked ? '1' : '0';
     document.getElementById('progress').innerHTML = '<div class="alert alert-info"><span class="spinner-border spinner-border-sm me-2"></span>Analyzing <b>' + esc(file.name) + '</b> (' + fmtBytes(file.size) + ') ...</div>';
-    var th = settings().thresholds || {};
-    fetch('/api/analyze?toolkits=' + tk + '&name=' + encodeURIComponent(file.name) + '&settings=' + encodeURIComponent(JSON.stringify(th)), { method: 'POST', body: fd }).then(function (r) { return r.json(); }).then(function (rep) {
+    fetch('api/analyze?toolkits=' + tk + '&name=' + encodeURIComponent(file.name), { method: 'POST', body: fd }).then(function (r) { return r.json(); }).then(function (rep) {
       if (rep.error) { document.getElementById('progress').innerHTML = '<div class="alert alert-danger">' + esc(rep.error) + '</div>'; return; }
       state.id = rep.id; state.report = rep; state.objects = null; nav('#/report/' + rep.id);
     }).catch(function (e) { document.getElementById('progress').innerHTML = '<div class="alert alert-danger">' + esc(e) + '</div>'; });
@@ -60,30 +62,32 @@
   // ---------------- history ----------------
   function historyTable(h) {
     return '<table class="table table-sm table-hover bg-white"><thead><tr><th>Analyzed</th><th>Application</th><th>Snapshot</th><th>File</th><th class="text-end">Objects</th><th class="text-end">Findings</th><th class="text-end">Health</th><th></th></tr></thead><tbody>' +
-      h.map(function (r) { var bs = r.bySeverity || {}; return '<tr><td><a href="#/report/' + r.id + '">' + esc(r.analyzedAt) + '</a></td><td>' + esc(r.app) + ' (' + esc(r.acronym) + ')</td><td>' + esc(r.snapshot) + '</td><td class="small-muted">' + esc(r.fileName) + ' ' + fmtBytes(r.fileSize || 0) + '</td><td class="text-end">' + r.objects + '</td><td class="text-end">' + r.findings + ' <span class="small-muted">(' + (bs.CRITICAL || 0) + 'C / ' + (bs.MAJOR || 0) + 'M)</span></td><td class="text-end"><b>' + r.health + '</b></td><td class="text-end"><button class="btn btn-sm btn-outline-danger" data-del="' + r.id + '" title="Delete"><i class="fa-solid fa-trash"></i></button></td></tr>'; }).join('') + '</tbody></table>';
+      h.map(function (r) { var bs = r.bySeverity || {}; return '<tr><td><a href="#/report/' + r.id + '">' + esc(r.analyzedAt) + '</a></td><td>' + esc(r.app) + ' (' + esc(r.acronym) + ')</td><td>' + esc(r.snapshot) + '</td><td class="small-muted">' + esc(r.fileName) + ' ' + fmtBytes(r.fileSize || 0) + '</td><td class="text-end">' + r.objects + '</td><td class="text-end">' + r.findings + ' <span class="small-muted">(' + (bs.CRITICAL || 0) + 'C / ' + (bs.MAJOR || 0) + 'M)</span></td><td class="text-end"><b>' + r.health + '</b></td><td class="text-end"><button class="btn btn-sm btn-outline-danger" data-del="' + r.id + '" title="Delete permanently (uploaded file and report)"><i class="fa-solid fa-trash"></i></button></td></tr>'; }).join('') + '</tbody></table>';
   }
   function history() {
     setNav('history'); app.innerHTML = '<h4>History</h4><div id="hist">Loading...</div>';
-    api('/api/history').then(function (h) { document.getElementById('hist').innerHTML = h.length ? historyTable(h) : '<div class="alert alert-secondary">No analyses yet.</div>';
-      app.querySelectorAll('[data-del]').forEach(function (b) { b.addEventListener('click', function () { if (confirm('Delete this analysis?')) fetch('/api/report/' + b.getAttribute('data-del'), { method: 'DELETE' }).then(history); }); }); });
+    api('api/history').then(function (h) { document.getElementById('hist').innerHTML = h.length ? historyTable(h) : '<div class="alert alert-secondary">No analyses yet.</div>';
+      app.querySelectorAll('[data-del]').forEach(function (b) { b.addEventListener('click', function () { deleteReport(b.getAttribute('data-del'), history); }); }); });
   }
 
   // ---------------- report ----------------
   function openReport(id, tab, arg) {
     setNav(''); if (state.id === id && state.report) return renderReport(tab, arg);
     app.innerHTML = '<div class="text-center py-5"><span class="spinner-border"></span></div>';
-    api('/api/report/' + id).then(function (rep) { state.id = id; state.report = rep; state.objects = null; renderReport(tab, arg); }).catch(function (e) { app.innerHTML = '<div class="alert alert-danger">' + esc(e) + '</div>'; });
+    api('api/report/' + id).then(function (rep) { state.id = id; state.report = rep; state.objects = null; renderReport(tab, arg); }).catch(function (e) { app.innerHTML = '<div class="alert alert-danger">' + esc(e) + '</div>'; });
   }
   function renderReport(tab, arg) {
     var r = state.report, s = r.summary; document.getElementById('current-report').textContent = r.app.name + ' ' + r.app.snapshot;
     var tabs = [['findings', 'Findings', 'fa-triangle-exclamation'], ['overview', 'Overview', 'fa-chart-pie'], ['objects', 'Objects & Diagrams', 'fa-diagram-project'], ['toolkits', 'Toolkit Usage', 'fa-toolbox'], ['search', 'TWX Search', 'fa-magnifying-glass']];
     var cov = r.coverage || {}, diags = r.diagnostics || [];
     app.innerHTML = '<div class="d-flex align-items-center mb-2"><h4 class="mb-0 me-3">' + esc(r.app.name) + ' <span class="text-secondary">(' + esc(r.app.acronym) + ') ' + esc(r.app.snapshot) + '</span></h4><span class="small-muted">' + esc(r.fileName) + ' · ' + r.inventory.objects + ' objects · ' + r.inventory.toolkits + ' toolkits · ' + (r.app.bawVersion ? esc(r.app.bawVersion) + ' export · ' : '') + 'analyzed ' + esc(r.analyzedAt) + ' in ' + r.durationMs + ' ms</span>' +
-      '<span class="ms-auto">Health <span class="health ' + (s.healthScore >= 80 ? 'text-success' : s.healthScore >= 50 ? 'text-warning' : 'text-danger') + '">' + s.healthScore + '</span> <span class="small-muted">/ 100</span></span></div>' +
+      '<span class="ms-auto">Health <span class="health ' + (s.healthScore >= 80 ? 'text-success' : s.healthScore >= 50 ? 'text-warning' : 'text-danger') + '">' + s.healthScore + '</span> <span class="small-muted">/ 100</span></span>' +
+      '<button class="btn btn-sm btn-outline-danger ms-3" id="repDelete" title="Delete this analysis permanently: the uploaded file and the report are removed from the server"><i class="fa-solid fa-trash me-1"></i>Delete</button></div>' +
       '<ul class="nav nav-tabs mb-3">' + tabs.map(function (t) { return '<li class="nav-item"><a class="nav-link ' + (t[0] === tab ? 'active' : '') + '" href="#/report/' + state.id + '/' + t[0] + '"><i class="fa-solid ' + t[2] + ' me-1"></i>' + t[1] + '</a></li>'; }).join('') + '</ul>' +
       (diags.length ? '<div class="alert alert-warning py-2 small"><i class="fa-solid fa-triangle-exclamation me-1"></i>' + diags.map(function (d) { return esc(d.message); }).join('<br>') + '</div>' : '') +
       (cov.status === 'partial' ? '<div class="alert alert-secondary py-2 small"><i class="fa-solid fa-circle-info me-1"></i>Analysis coverage: partial. ' + cov.scriptsParsed + ' of ' + cov.scripts + ' scripts parsed, ' + cov.scriptsWithSyntaxErrors + ' with syntax errors skipped by the syntax-tree rules' + (cov.skipped && cov.skipped.length ? ': ' + cov.skipped.slice(0, 5).map(function (k) { return esc(k.object) + ' / ' + esc(k.location); }).join('; ') + (cov.skipped.length > 5 ? ' ...' : '') : '') + '</div>' : '') +
       '<div id="tab"></div>';
+    document.getElementById('repDelete').addEventListener('click', function () { deleteReport(state.id, function () { nav('#/history'); }); });
     if (tab === 'overview') overview(); else if (tab === 'objects') objects(arg); else if (tab === 'search') search(); else if (tab === 'toolkits') toolkitUsage(); else findings(arg);
   }
   function overview() {
@@ -91,6 +95,7 @@
     var cats = Object.keys(s.byCategory).sort(function (a, b) { return s.byCategory[b] - s.byCategory[a]; });
     el.innerHTML = '<div class="row g-3">' + SEV.map(function (v) { return '<div class="col-6 col-lg-2"><div class="card p-3 text-center"><div class="stat sev-' + v + '">' + (s.bySeverity[v] || 0) + '</div><div class="small-muted">' + v.charAt(0) + v.slice(1).toLowerCase() + '</div></div></div>'; }).join('') +
       '<div class="col-6 col-lg-2"><div class="card p-3 text-center"><div class="stat">' + s.findings + '</div><div class="small-muted">Findings</div></div></div><div class="col-6 col-lg-2"><div class="card p-3 text-center"><div class="stat">' + s.score + '</div><div class="small-muted">Weighted score</div></div></div></div>' +
+      settingsNote(r) +
       '<div class="row g-3 mt-1"><div class="col-lg-4"><div class="card p-3"><h6>By severity</h6><canvas id="cSev" height="200"></canvas></div></div><div class="col-lg-4"><div class="card p-3"><h6>By category</h6><canvas id="cCat" height="200"></canvas></div></div><div class="col-lg-4"><div class="card p-3"><h6>Inventory</h6><table class="table table-sm mb-0">' + Object.keys(r.inventory.types).map(function (t) { return '<tr><td>' + esc(typeLabel(t)) + '</td><td class="text-end">' + r.inventory.types[t] + '</td></tr>'; }).join('') + '<tr><td>Scripts</td><td class="text-end">' + r.inventory.scripts + ' (' + r.inventory.scriptLines + ' lines)</td></tr></table></div></div></div>' +
       '<div class="card p-3 mt-3"><h6>Top rules</h6><table class="table table-sm table-hover mb-0"><thead><tr><th>Rule</th><th>Category</th><th>Severity</th><th class="text-end">Findings</th></tr></thead><tbody>' + r.rules.filter(function (x) { return x.count > 0; }).sort(function (a, b) { return b.count - a.count; }).map(function (x) { return '<tr class="selectable" onclick="location.hash=\'#/report/' + state.id + '/findings/' + x.id + '\'"><td><b>' + esc(x.id) + '</b> ' + esc(x.title) + '</td><td>' + esc(x.category) + '</td><td>' + sevBadge(x.severity) + '</td><td class="text-end">' + x.count + '</td></tr>'; }).join('') + '</tbody></table></div>' +
       '<div class="card p-3 mt-3"><h6>Toolkits</h6><table class="table table-sm mb-0"><thead><tr><th>Toolkit</th><th>Snapshot</th><th class="text-end">Objects</th><th class="text-end">Size</th><th>System</th></tr></thead><tbody>' + r.inventory.toolkitList.map(function (t) { return '<tr><td>' + esc(t.name) + ' (' + esc(t.acronym) + ')</td><td>' + esc(t.snapshot) + '</td><td class="text-end">' + t.objects + '</td><td class="text-end">' + fmtBytes(t.sizeBytes) + '</td><td>' + (t.system ? 'yes' : '') + '</td></tr>'; }).join('') + '</tbody></table></div>';
@@ -118,7 +123,7 @@
     document.getElementById('fsort').value = state.sort; document.getElementById('fq').addEventListener('input', function () { f.q = this.value; list(); });
     document.getElementById('fexport').addEventListener('click', function () { exportCsv(filtered()); });
     document.getElementById('fexporthtml').addEventListener('click', function () { exportHtml(filtered()); });
-    document.getElementById('fexportpdf').addEventListener('click', function () { var sev = SEV.filter(function (v) { return f.sev[v] !== false; }).join(','); window.open('/api/report/' + state.id + '/pdf?sev=' + sev + '&cat=' + encodeURIComponent(f.cat) + '&rule=' + encodeURIComponent(f.rule) + '&type=' + encodeURIComponent(f.type) + '&conf=' + f.conf + '&q=' + encodeURIComponent(f.q) + '&sort=' + state.sort, '_blank'); });
+    document.getElementById('fexportpdf').addEventListener('click', function () { var sev = SEV.filter(function (v) { return f.sev[v] !== false; }).join(','); window.open('api/report/' + state.id + '/pdf?sev=' + sev + '&cat=' + encodeURIComponent(f.cat) + '&rule=' + encodeURIComponent(f.rule) + '&type=' + encodeURIComponent(f.type) + '&conf=' + f.conf + '&q=' + encodeURIComponent(f.q) + '&sort=' + state.sort, '_blank'); });
     function filtered() { var q = f.q.toLowerCase(); return r.findings.filter(function (x) { return f.sev[x.severity] !== false && (!f.cat || x.category === f.cat) && (!f.rule || x.ruleId === f.rule) && (!f.type || x.objectTypeLabel === f.type) && (!f.conf || (x.confidence || 'high') === f.conf) && (!q || (x.path + ' ' + x.message + ' ' + x.title).toLowerCase().indexOf(q) >= 0); }); }
     function list() {
       var rows = filtered(); if (state.sort === 'object') rows = rows.slice().sort(function (a, b) { return (a.objectName + a.itemName).localeCompare(b.objectName + b.itemName) || b.score - a.score; }); else if (state.sort === 'rule') rows = rows.slice().sort(function (a, b) { return a.ruleId.localeCompare(b.ruleId) || b.score - a.score; });
@@ -148,7 +153,7 @@
   // ---------------- objects & diagrams ----------------
   function objects(arg) {
     var el = document.getElementById('tab'); el.innerHTML = '<div class="row"><div class="col-lg-3"><div class="card p-2"><input class="form-control form-control-sm mb-2" id="otree-q" placeholder="Filter artifacts"><div class="form-check form-check-inline small"><input class="form-check-input" type="checkbox" id="otk"><label class="form-check-label" for="otk">Show toolkits</label></div><div class="tree" id="otree" style="max-height:70vh;overflow:auto">Loading...</div></div></div><div class="col-lg-9" id="odetail"><div class="alert alert-secondary">Select an artifact to see its diagram, scripts, references and findings.</div></div></div>';
-    function load() { api('/api/objects/' + state.id + (document.getElementById('otk').checked ? '?toolkits=1' : '')).then(function (o) { state.objects = o; tree(); if (arg) { var p = arg.split('|'); showObject(p[0], p[1]); arg = null; } }); }
+    function load() { api('api/objects/' + state.id + (document.getElementById('otk').checked ? '?toolkits=1' : '')).then(function (o) { state.objects = o; tree(); if (arg) { var p = arg.split('|'); showObject(p[0], p[1]); arg = null; } }); }
     document.getElementById('otk').addEventListener('change', load); document.getElementById('otree-q').addEventListener('input', tree); load();
     function tree() {
       var q = document.getElementById('otree-q').value.toLowerCase(), counts = {}; state.report.findings.forEach(function (f) { if (f.objectId) counts[f.objectId] = (counts[f.objectId] || 0) + 1; });
@@ -161,7 +166,7 @@
   }
   function showObject(oid, itemId) {
     var el = document.getElementById('odetail'); el.innerHTML = '<div class="text-center py-4"><span class="spinner-border"></span></div>';
-    Promise.all([api('/api/object/' + state.id + '/' + oid), api('/api/diagram/' + state.id + '/' + oid)]).then(function (res) {
+    Promise.all([api('api/object/' + state.id + '/' + oid), api('api/diagram/' + state.id + '/' + oid)]).then(function (res) {
       var o = res[0], d = res[1], fl = state.report.findings.filter(function (f) { return f.objectId === oid; }), flaggedItems = {}; fl.forEach(function (f) { if (f.itemId) flaggedItems[f.itemId] = (flaggedItems[f.itemId] || []).concat([f]); });
       var html = '<div class="card p-3"><div class="d-flex align-items-center"><h5 class="mb-0">' + esc(o.name) + '</h5><span class="ms-2 badge bg-secondary">' + esc(o.typeLabel) + (d.subtype ? ' · ' + esc(d.subtype) : '') + '</span><span class="ms-auto small-muted">' + esc(o.package) + ' · ' + fmtBytes(o.size) + ' xml · ' + fl.length + ' finding(s)</span></div>';
       if (d.nodes && d.nodes.length) html += '<div class="mt-2 small-muted">Click a step to see its details; red = has findings. <span class="legend ms-2"><span style="background:#fff7e0"></span>script <span style="background:#e8f1fb"></span>call/activity <span style="background:#e9f7ef"></span>coach <span style="background:#fff3cd"></span>decision/gateway <span style="background:#efe6ff"></span>integration <span style="background:#fde2e4;border-color:#b02a37"></span>finding</span></div><div class="diagram-wrap mt-2" id="diagram"></div><div id="nodeinfo" class="mt-2"></div>';
@@ -175,7 +180,7 @@
       html += '<div class="row mt-3"><div class="col-md-6"><h6>References (' + o.references.length + ')</h6><div style="max-height:200px;overflow:auto">' + o.references.map(function (x) { return '<div><a href="#" data-goto="' + x.id + '">' + esc(x.name) + '</a> <span class="small-muted">' + esc(x.typeLabel) + ' · ' + esc(x.package) + '</span></div>'; }).join('') + '</div></div><div class="col-md-6"><h6>Referenced by (' + o.referencedBy.length + ')</h6><div style="max-height:200px;overflow:auto">' + o.referencedBy.map(function (x) { return '<div><a href="#" data-goto="' + x.id + '">' + esc(x.name) + '</a> <span class="small-muted">' + esc(x.typeLabel) + ' · ' + esc(x.package) + '</span></div>'; }).join('') + '</div></div></div>';
       html += '<div class="mt-3"><button class="btn btn-sm btn-outline-secondary" id="btnXml"><i class="fa-solid fa-code me-1"></i>Raw XML</button></div><div id="rawxml"></div>';
       el.innerHTML = html + '</div>';
-      document.getElementById('btnXml').addEventListener('click', function () { var b = this; b.disabled = true; api('/api/object/' + state.id + '/' + oid + '?xml=1').then(function (x) { document.getElementById('rawxml').innerHTML = '<pre class="code mt-2" style="max-height:60vh">' + esc(x.xml) + '</pre>'; }); });
+      document.getElementById('btnXml').addEventListener('click', function () { var b = this; b.disabled = true; api('api/object/' + state.id + '/' + oid + '?xml=1').then(function (x) { document.getElementById('rawxml').innerHTML = '<pre class="code mt-2" style="max-height:60vh">' + esc(x.xml) + '</pre>'; }); });
       el.querySelectorAll('[data-goto]').forEach(function (a) { a.addEventListener('click', function (e) { e.preventDefault(); showObject(a.getAttribute('data-goto')); }); });
       el.querySelectorAll('tr[data-fi]').forEach(function (tr) { tr.addEventListener('click', function () { findingDetail(state.report.findings[+tr.getAttribute('data-fi')]); }); });
       if (d.nodes && d.nodes.length) drawDiagram(d, flaggedItems, itemId);
@@ -220,7 +225,7 @@
       '<div class="col-auto"><div class="form-check"><input type="checkbox" class="form-check-input" id="sregex"><label class="form-check-label" for="sregex">Regex</label></div><div class="form-check"><input type="checkbox" class="form-check-input" id="scase"><label class="form-check-label" for="scase">Case sensitive</label></div><div class="form-check"><input type="checkbox" class="form-check-input" id="stk"><label class="form-check-label" for="stk">Include toolkits</label></div></div>' +
       '<div class="col-auto"><button class="btn btn-primary" id="sgo"><i class="fa-solid fa-magnifying-glass me-1"></i>Search</button></div></div></div><div id="sres" class="mt-3"></div>';
     function go() { var q = document.getElementById('sq').value; if (!q) return; var types = Array.from(document.getElementById('stypes').selectedOptions).map(function (o) { return o.value; }).join(','); document.getElementById('sres').innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
-      api('/api/search/' + state.id + '?q=' + encodeURIComponent(q) + '&scope=' + document.getElementById('sscope').value + '&types=' + types + '&regex=' + (document.getElementById('sregex').checked ? 1 : 0) + '&case=' + (document.getElementById('scase').checked ? 1 : 0) + '&toolkits=' + (document.getElementById('stk').checked ? 1 : 0)).then(function (hits) {
+      api('api/search/' + state.id + '?q=' + encodeURIComponent(q) + '&scope=' + document.getElementById('sscope').value + '&types=' + types + '&regex=' + (document.getElementById('sregex').checked ? 1 : 0) + '&case=' + (document.getElementById('scase').checked ? 1 : 0) + '&toolkits=' + (document.getElementById('stk').checked ? 1 : 0)).then(function (hits) {
         document.getElementById('sres').innerHTML = '<div class="small-muted mb-1">' + hits.length + ' hit(s)' + (hits.length >= 500 ? ' (limit reached, refine the query)' : '') + '</div><table class="table table-sm table-hover bg-white findings-table"><thead><tr><th>Artifact path</th><th>Where</th><th>Match</th></tr></thead><tbody>' + hits.map(function (h) { return '<tr class="selectable" data-o="' + h.objectId + '" data-i="' + esc(h.itemId) + '"><td class="path">' + esc(h.path) + '</td><td>' + esc(h.where) + '</td><td class="mono">' + esc(h.snippet) + '</td></tr>'; }).join('') + '</tbody></table>';
         document.getElementById('sres').querySelectorAll('tr[data-o]').forEach(function (tr) { tr.addEventListener('click', function () { nav('#/report/' + state.id + '/objects/' + encodeURIComponent(tr.getAttribute('data-o') + (tr.getAttribute('data-i') ? '|' + tr.getAttribute('data-i') : ''))); }); });
       }).catch(function (e) { document.getElementById('sres').innerHTML = '<div class="alert alert-danger">' + esc(e) + '</div>'; }); }
@@ -230,12 +235,12 @@
   // ---------------- compare ----------------
   function compare() {
     setNav('compare'); app.innerHTML = '<h4>Compare two analyses</h4><div id="cmp">Loading...</div>';
-    api('/api/history').then(function (h) {
+    api('api/history').then(function (h) {
       var opts = h.map(function (r) { return '<option value="' + r.id + '">' + esc(r.app) + ' ' + esc(r.snapshot) + ' — ' + esc(r.analyzedAt) + ' (' + r.findings + ' findings)</option>'; }).join('');
       document.getElementById('cmp').innerHTML = '<div class="card p-3"><div class="row g-2 align-items-end"><div class="col-md-5"><label class="form-label small">Before (older snapshot)</label><select class="form-select" id="ca">' + opts + '</select></div><div class="col-md-5"><label class="form-label small">After (newer snapshot)</label><select class="form-select" id="cb">' + opts + '</select></div><div class="col-auto"><button class="btn btn-primary" id="cgo">Compare</button></div></div></div><div id="cres" class="mt-3"></div>';
       var m = (location.hash.match(/a=([^&]+)&b=([^&]+)/)); if (m) { document.getElementById('ca').value = m[1]; document.getElementById('cb').value = m[2]; } else if (h.length > 1) { document.getElementById('ca').value = h[1].id; document.getElementById('cb').value = h[0].id; }
       document.getElementById('cgo').addEventListener('click', function () { var a = document.getElementById('ca').value, b = document.getElementById('cb').value; document.getElementById('cres').innerHTML = '<span class="spinner-border"></span>';
-        api('/api/compare?a=' + a + '&b=' + b).then(function (d) {
+        api('api/compare?a=' + a + '&b=' + b).then(function (d) {
           function rows(l, cls) { return l.map(function (o) { return '<tr class="' + cls + '"><td>' + esc(o.typeLabel) + '</td><td>' + esc(o.name) + '</td></tr>'; }).join(''); }
           function frows(l) { return l.map(function (f) { return '<tr><td>' + sevBadge(f.severity) + '</td><td><b>' + esc(f.ruleId) + '</b> ' + esc(f.title) + '</td><td class="path">' + esc(f.path) + '</td><td>' + esc(f.message) + '</td></tr>'; }).join(''); }
           var sb = d.summaryBefore, sa = d.summaryAfter;
@@ -250,8 +255,15 @@
   // ---------------- rules ----------------
   function rules() {
     setNav('rules'); app.innerHTML = '<h4>Rules</h4><div id="rl">Loading...</div>';
-    api('/api/rules').then(function (rs) { var cats = {}; rs.forEach(function (r) { (cats[r.category] = cats[r.category] || []).push(r); });
-      document.getElementById('rl').innerHTML = '<div class="small-muted mb-2">' + rs.length + ' rules. Sources: legacy code analyzer rules re-implemented for static analysis, IBM Deployment Accelerator checkstyle rules, BAW / CP4BA best practices, JavaScript static analysis.</div>' + Object.keys(cats).sort().map(function (c) { return '<div class="card p-3 mb-3"><h6>' + esc(c) + ' (' + cats[c].length + ')</h6><table class="table table-sm mb-0"><thead><tr><th style="width:110px">Id</th><th style="width:90px">Severity</th><th>Rule</th></tr></thead><tbody>' + cats[c].map(function (r) { return '<tr><td><b>' + esc(r.id) + '</b></td><td>' + sevBadge(r.severity) + '</td><td><b>' + esc(r.title) + '</b>' + (r.confidence === 'medium' ? ' <span class="badge bg-light text-dark border">needs review</span>' : '') + '<div class="small">' + esc(r.description) + '</div><div class="small text-success"><i class="fa-solid fa-wrench me-1"></i>' + esc(r.remediation) + '</div>' + (r.reference ? '<div class="small-muted">Reference: ' + esc(r.reference) + '</div>' : '') + '</td></tr>'; }).join('') + '</tbody></table></div>'; }).join(''); });
+    api('api/rules').then(function (rs) { var cats = {}; rs.forEach(function (r) { (cats[r.category] = cats[r.category] || []).push(r); }); var custom = rs.filter(function (r) { return r.customized; }).length, off = rs.filter(function (r) { return !r.enabled; }).length;
+      document.getElementById('rl').innerHTML = '<div class="small-muted mb-2">' + rs.length + ' rules. Sources: legacy code analyzer rules re-implemented for static analysis, IBM Deployment Accelerator checkstyle rules, BAW / CP4BA best practices, JavaScript static analysis. ' + (custom ? '<b>' + custom + ' rule(s) customized</b>' + (off ? ', ' + off + ' disabled' : '') + ' - ' : '') + 'severity, impact and enabled state are changed in <a href="#/settings">Settings</a>.</div>' + Object.keys(cats).sort().map(function (c) { return '<div class="card p-3 mb-3"><h6>' + esc(c) + ' (' + cats[c].length + ')</h6><table class="table table-sm mb-0"><thead><tr><th style="width:110px">Id</th><th style="width:130px">Severity</th><th>Rule</th></tr></thead><tbody>' + cats[c].map(function (r) { return '<tr' + (r.enabled ? '' : ' class="text-secondary"') + '><td><b>' + esc(r.id) + '</b></td><td>' + sevBadge(r.severity) + (r.impact > 1 ? ' <span class="badge bg-secondary" title="impact multiplier">x' + r.impact + '</span>' : '') + (r.severity !== r.defaultSeverity ? '<div class="small-muted">default ' + r.defaultSeverity.charAt(0) + r.defaultSeverity.slice(1).toLowerCase() + '</div>' : '') + '</td><td><b>' + esc(r.title) + '</b>' + (r.enabled ? '' : ' <span class="badge bg-dark">disabled</span>') + (r.customized ? ' <span class="badge bg-info text-dark">customized</span>' : '') + (r.confidence === 'medium' ? ' <span class="badge bg-light text-dark border">needs review</span>' : '') + '<div class="small">' + esc(r.description) + '</div><div class="small text-success"><i class="fa-solid fa-wrench me-1"></i>' + esc(r.remediation) + '</div>' + (r.reference ? '<div class="small-muted">Reference: ' + esc(r.reference) + '</div>' : '') + '</td></tr>'; }).join('') + '</tbody></table></div>'; }).join(''); });
+  }
+  /** Note under the report header when it was produced with customized rule settings. */
+  function settingsNote(r) {
+    var st = r.settings; if (!st) return '';
+    var n = Object.keys(st.rules || {}).length, w = Object.keys(st.severityWeights || {}), th = Object.keys(st.thresholds || {});
+    if (!n && !w.length && !th.length) return '';
+    return '<div class="alert alert-secondary py-2 small mt-3 mb-0"><i class="fa-solid fa-sliders me-1"></i>Analyzed with custom rule settings: ' + [n ? n + ' rule override(s)' : '', w.length ? 'severity weights ' + w.map(function (k) { return k.charAt(0) + k.slice(1).toLowerCase() + '=' + st.severityWeights[k]; }).join(', ') : '', th.length ? 'thresholds ' + th.map(function (k) { return k + '=' + st.thresholds[k]; }).join(', ') : ''].filter(Boolean).join('; ') + '.</div>';
   }
   function schemaRows(props, depth) {
     return props.map(function (p) { var badges = (p.required ? ' <span class="badge bg-secondary">required</span>' : '') + (p.list ? ' <span class="badge bg-secondary">list</span>' : '') + (p.default ? ' <span class="badge bg-secondary" title="' + esc(p.default) + '">default</span>' : '') + (p.circular ? ' <span class="badge bg-warning text-dark">circular</span>' : '') + (p.unresolved ? ' <span class="badge bg-danger">unresolved</span>' : '') + (p.truncated ? ' <span class="badge bg-secondary">depth limit</span>' : '');
@@ -279,7 +291,7 @@
     document.getElementById('tkSelAll').addEventListener('click', function () { sel(function () { return true; }); });
     document.getElementById('tkSelNone').addEventListener('click', function () { sel(function () { return false; }); });
     document.getElementById('tkExport').addEventListener('click', function () { var l = chosen(); if (l.length) exportToolkitHtml(l); });
-    document.getElementById('tkExportPdf').addEventListener('click', function () { var l = chosen(); if (l.length) window.open('/api/toolkit-usage/' + state.id + '/pdf?keys=' + encodeURIComponent(l.map(function (t) { return t.key; }).join('|')), '_blank'); });
+    document.getElementById('tkExportPdf').addEventListener('click', function () { var l = chosen(); if (l.length) window.open('api/toolkit-usage/' + state.id + '/pdf?keys=' + encodeURIComponent(l.map(function (t) { return t.key; }).join('|')), '_blank'); });
   }
 
   // ---------------- HTML exports (self-contained; the PDF exports are rendered by the engine) ----------------
@@ -308,13 +320,55 @@
 
   // ---------------- settings ----------------
   function settingsPage() {
-    setNav('settings'); var st = settings(), th = st.thresholds || {};
-    app.innerHTML = '<h4>Settings</h4><div class="small-muted mb-3">Stored in this browser only. Threshold changes apply to the next analysis (the rule text always states the default).</div>' +
-      '<div class="card p-3 mb-3"><div class="form-check"><input class="form-check-input" type="checkbox" id="stTk" ' + (st.toolkitsDefault ? 'checked' : '') + '><label class="form-check-label" for="stTk">Analyze the bundled (non-system) toolkits by default</label></div></div>' +
-      '<div class="card p-3"><h6>Rule thresholds</h6><table class="table table-sm"><thead><tr><th>Threshold</th><th style="width:120px">Default</th><th style="width:160px">Value</th></tr></thead><tbody>' + THRESHOLDS.map(function (t) { return '<tr><td>' + esc(t[2]) + ' <span class="small-muted">' + t[0] + '</span></td><td>' + t[1] + '</td><td><input type="number" min="1" class="form-control form-control-sm th" data-k="' + t[0] + '" value="' + (th[t[0]] !== undefined ? th[t[0]] : '') + '" placeholder="' + t[1] + '"></td></tr>'; }).join('') + '</tbody></table>' +
-      '<button class="btn btn-primary btn-sm" id="stSave">Save</button> <button class="btn btn-outline-secondary btn-sm" id="stReset">Reset to defaults</button> <span id="stMsg" class="small-muted ms-2"></span></div>';
-    document.getElementById('stSave').addEventListener('click', function () { var o = { toolkitsDefault: document.getElementById('stTk').checked, thresholds: {} }; app.querySelectorAll('.th').forEach(function (i) { if (i.value) o.thresholds[i.getAttribute('data-k')] = +i.value; }); saveSettings(o); document.getElementById('stMsg').textContent = 'Saved.'; });
-    document.getElementById('stReset').addEventListener('click', function () { saveSettings({}); settingsPage(); });
+    setNav('settings'); app.innerHTML = '<h4>Settings</h4><div id="st">Loading...</div>';
+    api('api/info').then(function (i) { info = i; return loadSettings(); }).then(renderSettings).catch(function (e) { document.getElementById('st').innerHTML = '<div class="alert alert-danger">' + esc(e) + '</div>'; });
   }
+  function renderSettings(d) {
+    var el = document.getElementById('st'), ids = Object.keys(d.rules), cats = {}; ids.forEach(function (k) { cats[d.rules[k].category] = 1; });
+    var sevOptions = function (v) { return SEV.map(function (x) { return '<option value="' + x + '"' + (x === v ? ' selected' : '') + '>' + x.charAt(0) + x.slice(1).toLowerCase() + '</option>'; }).join(''); };
+    var ro = info.settingsReadOnly, dis = ro ? ' disabled' : '';
+    el.innerHTML = (ro ? '<div class="alert alert-info py-2 small"><i class="fa-solid fa-lock me-1"></i>The rule settings are read-only on this server (demo): the values below can be viewed and exported, and imported into your own installation.</div>' : '') +
+      '<div class="small-muted mb-3">' + (info.workspaces ? 'Stored on the server for your workspace (this browser)' : 'Stored on the server in the data directory (settings.json)') + ' and applied to every analysis' + (info.workspaces ? '' : ', from this browser or the command line') + '. Reports record the settings they were produced with.</div>' +
+      '<div class="d-flex flex-wrap gap-2 align-items-center mb-3"><button class="btn btn-primary btn-sm" id="stSave"' + dis + '><i class="fa-solid fa-floppy-disk me-1"></i>Save</button>' +
+      '<a class="btn btn-outline-secondary btn-sm" href="api/settings?download=1" download="twx-code-analyzer-settings.json"><i class="fa-solid fa-file-export me-1"></i>Export</a>' +
+      '<button class="btn btn-outline-secondary btn-sm" id="stImport"' + dis + '><i class="fa-solid fa-file-import me-1"></i>Import</button><input type="file" id="stFile" accept=".json,application/json" hidden>' +
+      '<button class="btn btn-outline-danger btn-sm" id="stReset"' + dis + '><i class="fa-solid fa-rotate-left me-1"></i>Reset to defaults</button>' +
+      '<span class="small-muted">' + (d.customized ? '<i class="fa-solid fa-sliders me-1"></i>Custom settings active' : 'Built-in defaults') + '</span><span id="stMsg" class="small ms-2"></span></div>' +
+      '<div class="row g-3"><div class="col-lg-4">' +
+      '<div class="card p-3 mb-3"><h6>General</h6><div class="form-check"><input class="form-check-input" type="checkbox" id="stTk" ' + (d.includeToolkits ? 'checked' : '') + '><label class="form-check-label" for="stTk">Analyze the bundled (non-system) toolkits by default</label></div></div>' +
+      '<div class="card p-3 mb-3"><h6>Severity weights</h6><div class="small-muted mb-2">Score of a finding = severity weight x rule impact (1..3). The weighted total drives the ranking and the health score.</div><table class="table table-sm mb-0"><thead><tr><th>Severity</th><th style="width:100px">Default</th><th style="width:120px">Weight</th></tr></thead><tbody>' +
+      SEV.map(function (v, i) { return '<tr><td>' + sevBadge(v) + '</td><td>' + [100, 40, 10, 2][i] + '</td><td><input type="number" min="0" class="form-control form-control-sm sw" data-k="' + v + '" value="' + d.severityWeights[v] + '"></td></tr>'; }).join('') + '</tbody></table></div>' +
+      '<div class="card p-3"><h6>Thresholds</h6><div class="small-muted mb-2">Limits behind the size and complexity rules.</div><table class="table table-sm mb-0"><thead><tr><th>Threshold</th><th style="width:80px">Default</th><th style="width:110px">Value</th></tr></thead><tbody>' +
+      d.thresholdList.map(function (t) { return '<tr><td>' + esc(t.label) + ' <span class="small-muted">' + t.name + '</span></td><td>' + t['default'] + '</td><td><input type="number" min="0" class="form-control form-control-sm th" data-k="' + t.name + '" value="' + t.value + '"></td></tr>'; }).join('') + '</tbody></table></div></div>' +
+      '<div class="col-lg-8"><div class="card p-3"><div class="d-flex flex-wrap gap-2 align-items-center mb-2"><h6 class="mb-0 me-2">Rules (' + ids.length + ')</h6><input class="form-control form-control-sm" style="width:220px" id="rf" placeholder="filter by id or title"><select class="form-select form-select-sm" style="width:200px" id="rc"><option value="">All categories</option>' + Object.keys(cats).sort().map(function (c) { return '<option>' + esc(c) + '</option>'; }).join('') + '</select>' +
+      '<div class="form-check ms-1"><input class="form-check-input" type="checkbox" id="rcust"><label class="form-check-label small" for="rcust">customized only</label></div><span class="ms-auto"></span><button class="btn btn-outline-secondary btn-sm" id="rOn">Enable shown</button><button class="btn btn-outline-secondary btn-sm" id="rOff">Disable shown</button><button class="btn btn-outline-secondary btn-sm" id="rDef">Defaults for shown</button></div>' +
+      '<div class="small-muted mb-2">Uncheck a rule to skip it. Severity and impact replace the rule defaults for every finding of the rule; <span class="badge bg-info text-dark">customized</span> marks rules that differ from the defaults.</div>' +
+      '<div style="max-height:70vh;overflow:auto"><table class="table table-sm table-hover mb-0" id="rt"><thead class="sticky-top bg-white"><tr><th style="width:36px"></th><th style="width:110px">Id</th><th>Rule</th><th style="width:120px">Severity</th><th style="width:80px">Impact</th></tr></thead><tbody>' +
+      ids.map(function (k) { var r = d.rules[k]; return '<tr data-id="' + k + '" data-cat="' + esc(r.category) + '" data-text="' + esc((k + ' ' + r.title).toLowerCase()) + '"><td><input type="checkbox" class="form-check-input ren"' + (r.enabled ? ' checked' : '') + '></td><td><b>' + esc(k) + '</b></td><td>' + esc(r.title) + ' <span class="small-muted">' + esc(r.category) + '</span><span class="rcust">' + (r.customized ? ' <span class="badge bg-info text-dark">customized</span>' : '') + '</span><div class="small-muted">default: ' + r.defaultSeverity.charAt(0) + r.defaultSeverity.slice(1).toLowerCase() + ', impact ' + r.defaultImpact + '</div></td><td><select class="form-select form-select-sm rsev">' + sevOptions(r.severity) + '</select></td><td><select class="form-select form-select-sm rimp">' + [1, 2, 3].map(function (i) { return '<option' + (i === r.impact ? ' selected' : '') + '>' + i + '</option>'; }).join('') + '</select></td></tr>'; }).join('') + '</tbody></table></div></div></div></div>';
+    if (ro) el.querySelectorAll('#stTk, .sw, .th, .ren, .rsev, .rimp, #rOn, #rOff, #rDef').forEach(function (i) { i.disabled = true; });
+    var rows = Array.prototype.slice.call(el.querySelectorAll('#rt tbody tr'));
+    function shown() { return rows.filter(function (tr) { return !tr.hidden; }); }
+    function markRow(tr) { var r = d.rules[tr.getAttribute('data-id')], en = tr.querySelector('.ren').checked, sv = tr.querySelector('.rsev').value, im = +tr.querySelector('.rimp').value; var c = !en || sv !== r.defaultSeverity || im !== r.defaultImpact; tr.querySelector('.rcust').innerHTML = c ? ' <span class="badge bg-info text-dark">customized</span>' : ''; tr.setAttribute('data-c', c ? '1' : '0'); tr.classList.toggle('text-secondary', !en); }
+    rows.forEach(function (tr) { markRow(tr); tr.querySelectorAll('input,select').forEach(function (i) { i.addEventListener('change', function () { markRow(tr); }); }); });
+    function applyFilter() { var q = document.getElementById('rf').value.toLowerCase(), c = document.getElementById('rc').value, only = document.getElementById('rcust').checked; rows.forEach(function (tr) { tr.hidden = (q && tr.getAttribute('data-text').indexOf(q) < 0) || (c && tr.getAttribute('data-cat') !== c) || (only && tr.getAttribute('data-c') !== '1'); }); }
+    ['rf', 'rc', 'rcust'].forEach(function (id) { document.getElementById(id).addEventListener('input', applyFilter); document.getElementById(id).addEventListener('change', applyFilter); });
+    document.getElementById('rOn').addEventListener('click', function () { shown().forEach(function (tr) { tr.querySelector('.ren').checked = true; markRow(tr); }); });
+    document.getElementById('rOff').addEventListener('click', function () { shown().forEach(function (tr) { tr.querySelector('.ren').checked = false; markRow(tr); }); });
+    document.getElementById('rDef').addEventListener('click', function () { shown().forEach(function (tr) { var r = d.rules[tr.getAttribute('data-id')]; tr.querySelector('.ren').checked = true; tr.querySelector('.rsev').value = r.defaultSeverity; tr.querySelector('.rimp').value = r.defaultImpact; markRow(tr); }); });
+    function collect() {
+      var doc = { format: 'twx-code-analyzer-settings', version: 1, includeToolkits: document.getElementById('stTk').checked, severityWeights: {}, thresholds: {}, rules: {} };
+      el.querySelectorAll('.sw').forEach(function (i) { if (i.value !== '') doc.severityWeights[i.getAttribute('data-k')] = +i.value; });
+      el.querySelectorAll('.th').forEach(function (i) { if (i.value !== '') doc.thresholds[i.getAttribute('data-k')] = +i.value; });
+      rows.forEach(function (tr) { doc.rules[tr.getAttribute('data-id')] = { enabled: tr.querySelector('.ren').checked, severity: tr.querySelector('.rsev').value, impact: +tr.querySelector('.rimp').value }; });
+      return doc;
+    }
+    function done(r, what) { var warn = r.warnings && r.warnings.length; renderSettings(r.settings); var m = document.getElementById('stMsg'); m.className = 'small ms-2 ' + (warn ? 'text-warning' : 'text-success'); m.textContent = what + (warn ? ' with warnings: ' + r.warnings.join('; ') : '.'); }
+    function fail(e) { var m = document.getElementById('stMsg'); m.className = 'small ms-2 text-danger'; m.textContent = String(e); }
+    document.getElementById('stSave').addEventListener('click', function () { saveSettings(collect()).then(function (r) { done(r, 'Saved'); }).catch(fail); });
+    document.getElementById('stReset').addEventListener('click', function () { if (!confirm('Reset every rule, weight and threshold to the built-in defaults?')) return; api('api/settings', { method: 'DELETE' }).then(function (r) { settingsCache = r.settings; done(r, 'Reset to defaults'); }).catch(fail); });
+    document.getElementById('stImport').addEventListener('click', function () { document.getElementById('stFile').click(); });
+    document.getElementById('stFile').addEventListener('change', function () { var f = this.files[0]; if (!f) return; var rd = new FileReader(); rd.onload = function () { var doc; try { doc = JSON.parse(rd.result); } catch (e) { fail('Not a JSON file: ' + e.message); return; } if (!doc || typeof doc !== 'object' || Array.isArray(doc)) { fail('Not a settings document'); return; } saveSettings(doc).then(function (r) { done(r, 'Imported ' + f.name); }).catch(fail); }; rd.readAsText(f); });
+  }
+  api('api/info').then(function (i) { info = i; var p = document.getElementById('privacy'); if (p) p.textContent = privacyLine(); }).catch(function () {});
   route();
 })();

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- TWX Code Analyzer - deployable web application. Set the data directory (history, uploads, rule settings) with the
+     context parameter below, the JVM property -Dtca.data=<dir> or the environment variable TCA_DATA. -->
+<web-app xmlns="http://xmlns.jcp.org/xml/ns/javaee" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://xmlns.jcp.org/xml/ns/javaee http://xmlns.jcp.org/xml/ns/javaee/web-app_4_0.xsd" version="4.0">
+  <display-name>TWX Code Analyzer</display-name>
+  <!-- <context-param><param-name>dataDir</param-name><param-value>/var/lib/twx-code-analyzer</param-value></context-param>
+       <context-param><param-name>workspaces</param-name><param-value>true</param-value></context-param>      every browser sees only its own analyses (default true)
+       <context-param><param-name>retentionDays</param-name><param-value>30</param-value></context-param>     purge analyses older than N days (default 0 = keep)
+       <context-param><param-name>settingsReadOnly</param-name><param-value>true</param-value></context-param> demo server: rule settings can be viewed and exported, not changed -->
+  <servlet>
+    <servlet-name>analyzer</servlet-name>
+    <servlet-class>tca.web.AnalyzerServlet</servlet-class>
+    <load-on-startup>1</load-on-startup>
+  </servlet>
+  <servlet-mapping><servlet-name>analyzer</servlet-name><url-pattern>/*</url-pattern></servlet-mapping>
+</web-app>

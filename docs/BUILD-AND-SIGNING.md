@@ -4,14 +4,15 @@
 * `src/main/java/tca` - engine + local web server (plain Java, compiled with `--release 8`, no build framework).
 * `lib/rhino-1.7.15.jar` - Mozilla Rhino (MPL 2.0), shaded into the application jar for the JavaScript syntax checks.
 * `static/` - the web UI (own code: `index.html`, `app.js`, `app.css`; third party under `static/vendor` and `static/webfonts`: Bootstrap 5.3.3 (MIT), Font Awesome Free 6.5.2 (CC BY 4.0 / SIL OFL / MIT), Chart.js 4.4.4 (MIT)).
-* `build.sh` - compiles and builds `build/twx-code-analyzer.jar` (Main-Class `tca.Main`).
+* `lib/javax.servlet-api-4.0.1.jar`, `lib/jakarta.servlet-api-6.0.0.jar` - servlet API, compile-time only for the WAR builds (the container provides the runtime classes; not shipped).
+* `build.sh` - compiles and builds `build/twx-code-analyzer.jar` (Main-Class `tca.Main`), `build/twx-code-analyzer.war` (javax.servlet) and `build/twx-code-analyzer-jakarta.war` (jakarta.servlet, generated from the same servlet source by renaming the packages).
 * `package.sh` - builds `dist/twx-code-analyzer-<version>-linux-x64.tar.gz` and `-windows-x64.zip` (jar + static + docs + `run.sh`/`run.bat` + trimmed runtime made with jlink).
 * `run.sh` / `run.bat` - launchers: start the local server (127.0.0.1 only) and open the browser.
 
 ## Reproducible build
 1. JDK 17 (Temurin recommended; the produced bytecode is Java 8 so the jar also runs on the WebSphere/BAW Java 8 runtime).
-2. `JAVA_HOME=<linux jdk> ./build.sh` -> `build/twx-code-analyzer.jar`.
-3. `VERSION=1.0 JAVA_HOME=<linux jdk> WIN_JDK=<extracted windows jdk of the same major version> ./package.sh` -> `dist/`.
+2. `JAVA_HOME=<linux jdk> ./build.sh` -> `build/twx-code-analyzer.jar`, `build/twx-code-analyzer.war`, `build/twx-code-analyzer-jakarta.war`.
+3. `VERSION=1.2 JAVA_HOME=<linux jdk> WIN_JDK=<extracted windows jdk of the same major version> ./package.sh` -> `dist/` (desktop archives and the two WAR files).
    The Windows runtime image is produced by cross jlink from the Windows JDK's `jmods` (no Windows machine needed for the zip package).
 4. Record the SHA-256 of every artifact (`sha256sum dist/*`) and tag the commit `v<version>`.
 
@@ -33,7 +34,7 @@ Verify with `signtool verify /pa /v <file>` and by installing on a clean Windows
 `tar.gz` + detached GPG signature (`gpg --armor --detach-sign`) and SHA-256 sums; an AppImage or deb can be produced from the same directory layout (`run.sh` is the entry point).
 
 ## Versioning
-`Implementation-Version` in the jar manifest (`build.sh`), `VERSION` in `package.sh` and `Analyzer.VERSION` (reported as `engineVersion` in every report) must match the git tag.
+`VERSION` in `build.sh` (jar and WAR manifests), `VERSION` in `package.sh` and `Analyzer.VERSION` (reported as `engineVersion` in every report) must match the git tag.
 
 ## Security notes for the release
 * The server binds to 127.0.0.1 only; there is no authentication (single-user desktop tool). The web deployment (later) must sit behind a reverse proxy with authentication.

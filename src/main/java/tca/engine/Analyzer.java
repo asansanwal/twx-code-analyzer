@@ -7,7 +7,7 @@ import tca.rules.*;
 
 /** Runs the rule set over a TWX model and produces a Report (findings ranked by score, then severity, then path). */
 public class Analyzer {
-    public static final String VERSION = "1.1";
+    public static final String VERSION = "1.2";
     private final List<Rule> rules;
     public Analyzer() { this(RuleSet.all()); }
     public Analyzer(List<Rule> rules) { this.rules = rules; }
@@ -16,20 +16,25 @@ public class Analyzer {
 
     public Report analyze(TwxModel twx, Map<String, Object> settings) {
         long t0 = System.currentTimeMillis(); boolean incTk = settings != null && Boolean.TRUE.equals(settings.get("includeToolkits"));
-        RuleContext ctx = new RuleContext(twx, settings, incTk); Report r = new Report();
+        RuleSettings rs = RuleSettings.of(settings); Map<String, Object> ctxSettings = settings == null ? new HashMap<String, Object>() : new HashMap<String, Object>(settings); ctxSettings.putAll(rs.thresholds);   // flat thresholds for RuleContext.threshold
+        RuleContext ctx = new RuleContext(twx, ctxSettings, incTk); Report r = new Report(); r.settings = rs.toJson();
         r.fileName = twx.fileName; r.fileSize = twx.fileSize; r.appName = twx.app.name; r.acronym = twx.app.acronym; r.snapshotName = twx.app.snapshotName; r.snapshotId = twx.app.snapshotId; r.projectId = twx.app.id; r.branchId = twx.app.branchId;
         r.analyzedAt = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss").format(new Date()); r.objectCount = twx.app.objects.size(); r.toolkitCount = twx.toolkits.size(); r.typeCounts = twx.app.typeCounts();
         for (TwxPackage p : twx.toolkits.values()) r.toolkits.add(tca.util.Json.obj("name", p.name, "acronym", p.acronym, "snapshot", p.snapshotName, "snapshotId", p.snapshotId, "objects", p.objects.size(), "system", ctx.isSystem(p), "sizeBytes", p.zipSize));
         for (Script s : ctx.allScripts()) { r.scriptCount++; r.scriptLines += s.lines(); }
         Map<String, Integer> counts = new LinkedHashMap<>();
         for (Rule rule : rules) {
-            List<Finding> out = new ArrayList<>(); long rt = System.currentTimeMillis();
-            try { rule.check(ctx, out); } catch (RuntimeException e) { Finding f = Finding.of(rule, null, "", "", "", "Rule failed: " + e, ""); f.severity = Severity.INFO.name(); f.score = 0; out.add(f); }
+            if (!rs.enabled(rule)) { counts.put(rule.id, 0); continue; }
+            List<Finding> out = new ArrayList<>(); long rt = System.currentTimeMillis(); Finding failed = null;
+            try { rule.check(ctx, out); } catch (RuntimeException e) { failed = Finding.of(rule, null, "", "", "", "Rule failed: " + e, ""); failed.severity = Severity.INFO.name(); failed.score = 0; }
+            RuleSettings.Override ov = rs.rules.get(rule.id);
+            for (Finding f : out) { if (ov != null && ov.severity != null) f.severity = ov.severity.name(); f.score = rs.score(rule, f.severity); }   // customised severity replaces the rule's own; the score always follows the (customised) weights x impact
+            if (failed != null) out.add(failed);
             for (Finding f : out) if (f.packageName.isEmpty()) { f.packageName = twx.app.name; f.packageAcronym = twx.app.acronym; f.packageId = twx.app.snapshotId; }
             ruleTimes.put(rule.id, System.currentTimeMillis() - rt); counts.put(rule.id, out.size()); r.findings.addAll(out);
         }
         Collections.sort(r.findings, new Comparator<Finding>() { public int compare(Finding a, Finding b) { int c = Integer.compare(b.score, a.score); if (c != 0) return c; c = a.severity.compareTo(b.severity); if (c != 0) return c; c = a.objectName.compareTo(b.objectName); return c != 0 ? c : a.ruleId.compareTo(b.ruleId); } });
-        for (Rule rule : rules) { Map<String, Object> rj = rule.toJson(); rj.put("count", counts.get(rule.id)); r.rules.add(rj); }
+        for (Rule rule : rules) { Map<String, Object> rj = rule.toJson(); rj.put("defaultSeverity", rule.severity.name()); rj.put("severity", rs.severity(rule).name()); rj.put("impact", rs.impact(rule)); rj.put("enabled", rs.enabled(rule)); rj.put("customized", rs.hasOverride(rule)); rj.put("count", counts.get(rule.id)); r.rules.add(rj); }
         r.buildVersion = twx.app.buildVersion; r.bawVersion = Report.bawLabel(twx.app.buildVersion);
         r.diagnostics.addAll(twx.diagnostics);
         if (r.bawVersion.isEmpty()) r.diagnostics.add(tca.util.Json.obj("code", "BAW_VERSION_UNKNOWN", "message", "The export does not state the product version (package.xml buildVersion); version-specific advice in the findings is generic."));

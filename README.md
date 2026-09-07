@@ -4,7 +4,9 @@ TWX Code Analyzer is a local tool for the static analysis of IBM Business Proces
 
 It also answers the everyday questions about an export: which toolkit artifacts does the application really use, what changed between two snapshots, where is a variable or a service referenced, and what does a business object look like once its nested types are resolved.
 
-Everything runs on your machine. Nothing is uploaded anywhere.
+Everything runs on your machine with the desktop app. Nothing is uploaded anywhere.
+
+**Live demo: [https://twxca.com](https://twxca.com)** - the deployable web application (version 1.2) running as a public demo. Each browser gets a private workspace: your uploads and reports are visible to you only, you can delete them permanently at any time, and anything left is purged after 30 days. The rule settings are read-only on the demo (view and export them; import them into your own installation). Do not upload exports you are not allowed to store on a third-party server.
 
 License: MIT (attribution required, see [License](#license)).
 
@@ -19,9 +21,9 @@ License: MIT (attribution required, see [License](#license)).
 * Artifact browser: variables, steps or flow objects with lanes and assignments, scripts, coach view options and resources, business object schema with nested types (circular and unresolved types flagged), managed asset content, references both ways, raw XML.
 * TWX search: text or regular expression over names, scripts, conditions, mappings, documentation and raw XML, with artifact type and toolkit filters.
 * Exports: CSV, self-contained HTML and PDF reports of the findings (respecting the current filter) and of the toolkit usage.
-* Settings: analyze bundled toolkits by default, and the numeric thresholds behind the size and complexity rules.
+* Rule settings: enable or disable every rule, change its severity and impact, the severity weights behind the score and the numeric thresholds of the size and complexity rules; export the settings as a JSON file and import them elsewhere (browser, command line, embedded engine).
 * Analysis coverage and diagnostics: product version of the export, scripts skipped because of syntax errors, missing object files, unreadable toolkits.
-* A command line for batch use (JSON output) and a JSON facade to embed the engine in other Java or BAW deliveries.
+* A command line for batch use (JSON output), a JSON facade to embed the engine in other Java or BAW deliveries, and a deployable web application (WAR) for a shared server with private per-browser workspaces, permanent deletion of uploads and optional retention.
 
 The browser UI has the pages Analyze, History, Compare, Rules and Settings, and per report the tabs Findings, Overview, Objects & Diagrams, Toolkit Usage and TWX Search.
 
@@ -31,18 +33,20 @@ Requirements: Java 8 or newer to run (the packaged builds ship their own runtime
 
 ```
 # build
-JAVA_HOME=/path/to/jdk17 ./build.sh          # -> build/twx-code-analyzer.jar
+JAVA_HOME=/path/to/jdk17 ./build.sh          # -> build/twx-code-analyzer.jar, build/twx-code-analyzer.war, build/twx-code-analyzer-jakarta.war
 
 # local web app (listens on 127.0.0.1 only, opens the browser)
 java -jar build/twx-code-analyzer.jar serve 8765 data
 
 # command line
-java -jar build/twx-code-analyzer.jar analyze MyApp.twx report.json   # findings, summary, toolkit usage, coverage as JSON
-java -jar build/twx-code-analyzer.jar inventory MyApp.twx             # what the loader sees
-java -jar build/twx-code-analyzer.jar rules docs/RULES.md             # rule catalogue as markdown
+java -jar build/twx-code-analyzer.jar analyze MyApp.twx report.json                 # findings, summary, toolkit usage, coverage as JSON
+java -jar build/twx-code-analyzer.jar analyze MyApp.twx report.json --settings my-rules.json --toolkits   # with customised rule settings, toolkits included
+java -jar build/twx-code-analyzer.jar settings my-rules.json                        # settings template (every rule with its defaults) to edit
+java -jar build/twx-code-analyzer.jar inventory MyApp.twx                           # what the loader sees
+java -jar build/twx-code-analyzer.jar rules docs/RULES.md                           # rule catalogue as markdown
 ```
 
-`run.sh` / `run.bat` start the packaged app; `package.sh` builds the Linux and Windows distributions with a trimmed Java runtime (see [docs/BUILD-AND-SIGNING.md](docs/BUILD-AND-SIGNING.md)).
+`run.sh` / `run.bat` start the packaged app; `package.sh` builds the Linux and Windows distributions with a trimmed Java runtime (see [docs/BUILD-AND-SIGNING.md](docs/BUILD-AND-SIGNING.md)). The WAR files deploy the same application on WebSphere Liberty, WebSphere traditional or Tomcat for a team (see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)).
 
 ## How a TWX is read
 
@@ -168,27 +172,54 @@ The artifact tree groups the application (and, optionally, every bundled toolkit
 
 ## History and comparison
 
-Every analysis is stored under `data/<id>/` as the uploaded file, the report JSON and a small metadata file (no database). The History page lists them; Compare takes two analyses of the same application and reports added, removed and changed artifacts, toolkit version changes, and the findings that are new (regressions) or fixed.
+Every analysis is stored under `data/<id>/` as the uploaded file, the report JSON and a small metadata file (no database). The History page lists them; the trash button there and the Delete button on the report remove the analysis permanently (uploaded file, report and metadata are deleted from disk). Compare takes two analyses of the same application and reports added, removed and changed artifacts, toolkit version changes, and the findings that are new (regressions) or fixed.
 
-## Settings
+## Rule settings
 
-Stored in the browser (localStorage): whether bundled toolkits are analyzed by default, and the numeric thresholds used by the size and complexity rules (script length, steps per service, parameters, private variables, flow objects, nested coach views, controls per coach, toolkit count and depth, asset sizes ...). Threshold values are sent with each analysis; the defaults are stated in every rule text.
+The Settings page customises the rule set; the settings are stored by the server in the data directory (`settings.json`) and apply to every analysis made from the browser, the command line (`--settings`) or the embedded engine.
+
+| What | Where | Effect |
+|---|---|---|
+| Enabled | per rule | A disabled rule does not run; it stays in the catalogue and in reports as *disabled* with 0 findings |
+| Severity | per rule | Replaces the rule's severity (Critical, Major, Minor, Info) on every finding of the rule, including the ones the rule would have escalated itself |
+| Impact | per rule | Multiplier 1..3 of the severity weight (business criticality of the rule) |
+| Severity weights | global | Points per severity (defaults Critical 100, Major 40, Minor 10, Info 2); score = weight x impact, the weighted total drives the ranking and the health score |
+| Thresholds | global | Limits of the size and complexity rules (script length, steps per service, parameters, private variables, flow objects, controls per coach, toolkit count and depth, asset sizes ...) |
+| Analyze toolkits | global | Default of the "also analyze the bundled toolkits" option |
+
+The page has a filter (id, title, category, customised only) and bulk buttons (enable, disable or reset the shown rules). **Export** downloads the complete settings as a JSON file (`twx-code-analyzer-settings.json`, every rule with its effective and default values); **Import** loads such a file, full or partial (only the rules that change), validates it and reports what was ignored (unknown rules or thresholds, invalid severities or impacts); **Reset to defaults** removes every customisation. Every report records the settings it was produced with (`settings` in the JSON, a note on the Overview tab), and the Rules page shows the effective values with *disabled* and *customized* badges.
+
+Settings file format (partial documents are accepted; values equal to the defaults are dropped when stored):
+
+```json
+{ "format": "twx-code-analyzer-settings", "version": 1,
+  "includeToolkits": false,
+  "severityWeights": { "CRITICAL": 100, "MAJOR": 40, "MINOR": 10, "INFO": 2 },
+  "thresholds": { "scriptLinesMedium": 100, "serviceSteps": 40 },
+  "rules": { "TCA-JS-001": { "enabled": false }, "TCA-JS-020": { "severity": "MINOR", "impact": 2 } } }
+```
+
+`java -jar twx-code-analyzer.jar settings template.json` writes the full template with every rule; `analyze ... --settings file.json` applies a file on the command line. A settings file exported from the web app or from the process application can be imported anywhere.
 
 ## Architecture
 
 ```mermaid
 flowchart LR
     User["Browser or CLI"] --> Main["tca.Main"]
-    Main -->|serve| Web["tca.web.WebServer (JDK HTTP server, JSON API + static UI)"]
-    Main -->|analyze / inventory / rules| Loader
-    Web -->|POST /api/analyze| Loader["tca.parse.TwxLoader"]
+    Main -->|serve| Web["tca.web.WebServer (JDK HTTP server, desktop app)"]
+    Container["Servlet container (WAR)"] --> Servlet["tca.web.AnalyzerServlet"]
+    Web --> Api["tca.web.Api (JSON API shared by both)"]
+    Servlet --> Api
+    Main -->|analyze / inventory / rules / settings| Loader
+    Api -->|POST /api/analyze| Loader["tca.parse.TwxLoader"]
     Loader --> Model["tca.model (packages, objects, services, BPDs, coach views, business objects, scripts)"]
+    Settings["tca.rules.RuleSettings (enabled, severity, impact, weights, thresholds)"] --> Context
     Model --> Context["tca.rules.RuleContext (cached models, reference index, thresholds)"]
     Context --> Rules["tca.rules.* (156 rules)"]
     Rules --> Report["tca.engine.Report (findings, summary, coverage, diagnostics)"]
     Context --> Usage["tca.engine.ToolkitUsage"]
     Usage --> Report
-    Report --> Store["tca.web.Store (data/<id>/)"]
+    Report --> Store["tca.web.Store (data/<id>/, settings.json)"]
     Report --> Pdf["tca.engine.PdfReport"]
     Context --> Views["tca.engine.ObjectViews, tca.diagram.DiagramBuilder, tca.search.Searcher"]
     Views --> UI["static/app.js"]
@@ -197,25 +228,30 @@ flowchart LR
     Facade --> Views
 ```
 
-Java 8 bytecode, no framework, one dependency (Mozilla Rhino, shaded into the jar for the JavaScript parser). The web UI is plain HTML and JavaScript with Bootstrap, Font Awesome and Chart.js served from the jar's `static/` folder. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the package layout, the TWX facts the parsers rely on, and the ranking formulas; [docs/EMBEDDING.md](docs/EMBEDDING.md) for the JSON facade used to embed the engine in other deliveries.
+Java 8 bytecode, no framework, one runtime dependency (Mozilla Rhino, shaded into the jar for the JavaScript parser); the servlet API jars in `lib/` are compile-time only. The web UI is plain HTML and JavaScript with Bootstrap, Font Awesome and Chart.js served from the `static/` folder (packaged into the WAR); it uses relative URLs only, so it runs at any context root. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the package layout, the TWX facts the parsers rely on, and the ranking formulas; [docs/EMBEDDING.md](docs/EMBEDDING.md) for the JSON facade used to embed the engine in other deliveries.
 
-## HTTP API (local web app)
+## HTTP API (local web app and WAR)
+
+Paths are relative to the application root (`http://127.0.0.1:8765/` for the desktop app, `https://server/twx-code-analyzer/` for the WAR).
 
 | Endpoint | Purpose |
 |---|---|
-| `POST /api/analyze?toolkits=0|1&name=<file>&settings=<json>` | Analyze an uploaded TWX (multipart or raw body); returns the report |
-| `GET /api/report/<id>` · `DELETE /api/report/<id>` | Stored report / delete an analysis |
+| `POST /api/analyze?toolkits=0|1&name=<file>&settings=<json>` | Analyze an uploaded TWX (multipart or raw body) with the stored rule settings (`settings` = optional one-off overrides in the settings file format); returns the report |
+| `GET /api/info` | Engine version and deployment options (`workspaces`, `retentionDays`, `settingsReadOnly`) |
+| `GET /api/settings` · `GET /api/settings?download=1` | Full rule settings document (the export file; `download` sets a file name) |
+| `PUT /api/settings` · `DELETE /api/settings` | Import a settings document (full or partial, validated; returns `warnings` and the stored settings) / reset to the defaults |
+| `GET /api/report/<id>` · `DELETE /api/report/<id>` | Stored report / delete an analysis permanently (report, metadata and uploaded TWX) |
 | `GET /api/report/<id>/pdf?sev=&cat=&rule=&type=&conf=&q=&sort=` | Findings PDF with the same filter as the UI |
 | `GET /api/history` | Analyses list |
 | `GET /api/objects/<id>?toolkits=1` · `GET /api/object/<id>/<objectId>?xml=1` · `GET /api/diagram/<id>/<objectId>` | Artifact tree, artifact detail, diagram geometry |
 | `GET /api/toolkit-usage/<id>` · `GET /api/toolkit-usage/<id>/pdf?keys=k1|k2` | Toolkit usage (also part of the report) and its PDF |
 | `GET /api/search/<id>?q=&regex=&case=&scope=&types=&toolkits=` | TWX search |
 | `GET /api/compare?a=<id>&b=<id>` | Snapshot comparison |
-| `GET /api/rules` | Rule catalogue |
+| `GET /api/rules` | Rule catalogue with the effective severity, impact and enabled state |
 
 ## Privacy and security
 
-The tool parses files locally and listens on 127.0.0.1 only. It makes no network calls of its own; the only outbound connection is the optional Process Center export of the embedding facade, which happens only when a caller supplies a server URL and credentials. No telemetry, no external scripts or fonts in the UI.
+The desktop app parses files locally and listens on 127.0.0.1 only (`serve ... --host 0.0.0.0` opens it deliberately, for example inside a container). On a server the application isolates visitors in workspaces: each browser receives a random token in an HttpOnly cookie and sees only its own analyses and rule settings (stored under `<dataDir>/ws/<token>/`); a report id of another workspace answers 404. Uploads can be deleted permanently at any time and an optional retention purges old analyses. The WAR has no authentication of its own, so for a private deployment add the container's security (a security constraint, the reverse proxy or the enterprise single sign-on, see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)). The tool makes no network calls of its own; the only outbound connection is the optional Process Center export of the embedding facade, which happens only when a caller supplies a server URL and credentials. No telemetry, no external scripts or fonts in the UI.
 
 ## Documentation
 
@@ -224,6 +260,8 @@ The tool parses files locally and listens on 127.0.0.1 only. It makes no network
 * [docs/RESEARCH-RULE-SOURCES.md](docs/RESEARCH-RULE-SOURCES.md) - public sources of the best-practice rules
 * [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) - packages, TWX facts, ranking, diagrams, deliveries
 * [docs/EMBEDDING.md](docs/EMBEDDING.md) - the JSON facade for embedding the engine (Java, BAW)
+* [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) - the deployable web application (WAR on Liberty, WebSphere, Tomcat; Docker; the layout of the live demo)
+* [docs/CHANGELOG.md](docs/CHANGELOG.md) - what changed in each version
 * [docs/BUILD-AND-SIGNING.md](docs/BUILD-AND-SIGNING.md) - reproducible build, packaging, signed Windows launcher
 
 ## License

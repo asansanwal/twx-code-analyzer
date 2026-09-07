@@ -21,13 +21,16 @@ import tca.util.Json;
  * Operations (args in braces):
  *  ping                                          version, folder, java
  *  files                                         TWX files in the folder
- *  analyze    {fileName, includeToolkits}        runs the rules, stores the report, returns the summary (with reportKey)
+ *  analyze    {fileName, includeToolkits, settings?}   runs the rules with the stored settings (+ optional overrides), stores the report, returns the summary (with reportKey)
  *  report     {reportKey}                        the stored report (findings, rules, inventory)
  *  objects    {fileName, toolkits}               object tree of the TWX
  *  object     {fileName, objectId, xml}          object detail + diagram
  *  search     {fileName, q, regex, case, scope, types, toolkits, limit}
  *  compare    {fileA, reportA, fileB, reportB}   object differences and findings delta
- *  rules                                         rule catalogue
+ *  rules                                         rule catalogue with the effective (customised) severity / impact / enabled
+ *  settings                                      full rule settings document (weights, thresholds, every rule) - the export file format
+ *  saveSettings {settings}                       stores a settings document (object or JSON text, full or partial, validated) in {folder}/.tca/settings.json; returns {saved, warnings, settings}
+ *  resetSettings                                 back to the built-in defaults
  *  toolkitUsage {fileName}                      toolkit usage (used / possible / none per toolkit artifact) - also part of every stored report
  *  pdf        {reportKey, sev, cat, rule, type, conf, q, sort}   findings PDF (same filter as the UI) as {fileName, base64}
  *  toolkitUsagePdf {reportKey, keys}             toolkit usage PDF for the selected toolkit keys ("k1|k2", empty = all) as {fileName, base64}
@@ -52,10 +55,11 @@ public class Facade {
         } catch (Throwable e) { return Json.write(Json.obj("error", message(e))); }
     }
 
+    @SuppressWarnings("unchecked")
     Object dispatch(String op, Map<String, Object> a, File folder) throws Exception {
         if (op.equals("ping")) return Json.obj("version", VERSION, "folder", folder.getAbsolutePath(), "java", System.getProperty("java.version"), "cached", cache.size());
         if (op.equals("files")) return files(folder);
-        if (op.equals("analyze")) return analyze(folder, str(a, "fileName"), bool(a, "includeToolkits"));
+        if (op.equals("analyze")) return analyze(folder, str(a, "fileName"), bool(a, "includeToolkits"), a.get("settings"));
         if (op.equals("report")) return new Raw(readReport(folder, str(a, "reportKey")));
         if (op.equals("objects")) return ObjectViews.objects(context(folder, str(a, "fileName")), bool(a, "toolkits"));
         if (op.equals("object")) { RuleContext c = context(folder, str(a, "fileName")); TwxObject o = c.twx.find(str(a, "objectId")); if (o == null) throw new IllegalArgumentException("unknown object " + str(a, "objectId"));
@@ -67,7 +71,10 @@ public class Facade {
         if (op.equals("pdf")) { Report r = reportObject(folder, str(a, "reportKey")); return Json.obj("fileName", "report-" + fileTag(r) + ".pdf", "base64", java.util.Base64.getEncoder().encodeToString(PdfReport.findings(r, PdfReport.filterFindings(r, strMap(a)), PdfReport.describe(strMap(a))))); }
         if (op.equals("toolkitUsagePdf")) { Report r = reportObject(folder, str(a, "reportKey")); Set<String> keys = new HashSet<>(); for (String k : str(a, "keys").split("\\|")) if (!k.isEmpty()) keys.add(k); @SuppressWarnings("unchecked") List<Map<String, Object>> all = (List<Map<String, Object>>) r.toolkitUsage.get("toolkits"); List<Map<String, Object>> sel = new ArrayList<>(); if (all != null) for (Map<String, Object> t : all) if (keys.isEmpty() || keys.contains(String.valueOf(t.get("key")))) sel.add(t); return Json.obj("fileName", "toolkit-usage-" + fileTag(r) + ".pdf", "base64", java.util.Base64.getEncoder().encodeToString(PdfReport.toolkitUsage(r, sel))); }
         if (op.equals("toolkitUsage")) return ToolkitUsage.compute(context(folder, str(a, "fileName")));
-        if (op.equals("rules")) { List<Object> l = new ArrayList<>(); for (Rule r : analyzer.rules()) l.add(r.toJson()); return l; }
+        if (op.equals("rules")) { RuleSettings rs = settings(folder); List<Object> l = new ArrayList<>(); for (Rule r : analyzer.rules()) { Map<String, Object> m = r.toJson(); m.put("defaultSeverity", r.severity.name()); m.put("severity", rs.severity(r).name()); m.put("impact", rs.impact(r)); m.put("enabled", rs.enabled(r)); m.put("customized", rs.hasOverride(r)); l.add(m); } return l; }
+        if (op.equals("settings")) return settings(folder).document(analyzer.rules());
+        if (op.equals("saveSettings")) { Object v = a.get("settings"); RuleSettings rs = (v instanceof Map ? RuleSettings.fromJson((Map<String, Object>) v) : RuleSettings.fromJson(v == null ? "" : String.valueOf(v))).prune(analyzer.rules()); saveSettings(folder, rs); return Json.obj("saved", true, "customized", rs.isCustomized(), "warnings", rs.warnings, "settings", rs.document(analyzer.rules())); }
+        if (op.equals("resetSettings")) { saveSettings(folder, new RuleSettings()); return Json.obj("saved", true, "customized", false, "warnings", new ArrayList<Object>(), "settings", new RuleSettings().document(analyzer.rules())); }
         if (op.equals("export")) return ProcessCenterExport.export(str(a, "url"), str(a, "user"), str(a, "password"), str(a, "snapshotId"), new File(folder, safeName(str(a, "fileName"))));
         if (op.equals("deleteFile")) return deleteFile(folder, str(a, "fileName"));
         throw new IllegalArgumentException("unknown operation '" + op + "'");
@@ -97,9 +104,17 @@ public class Facade {
     }
     static RuleContext context(File folder, String name) throws IOException { return load(folder, name).context; }
 
+    // ---- rule settings ----------------------------------------------------------------------------------------------
+    static File settingsFile(File folder) { return new File(new File(folder, ".tca"), "settings.json"); }
+    static RuleSettings settings(File folder) { File f = settingsFile(folder); if (!f.isFile()) return new RuleSettings(); try { return RuleSettings.fromJson(new String(Files.readAllBytes(f.toPath()), StandardCharsets.UTF_8)); } catch (Exception e) { return new RuleSettings(); } }
+    static void saveSettings(File folder, RuleSettings s) throws IOException { File f = settingsFile(folder); if (!s.isCustomized()) { f.delete(); return; } f.getParentFile().mkdirs(); Files.write(f.toPath(), Json.writePretty(s.toJson()).getBytes(StandardCharsets.UTF_8)); }
+
     // ---- analysis ---------------------------------------------------------------------------------------------------
-    static Map<String, Object> analyze(File folder, String name, boolean includeToolkits) throws IOException {
-        long t0 = System.currentTimeMillis(); Loaded l = load(folder, name); Map<String, Object> settings = new HashMap<>(); settings.put("includeToolkits", includeToolkits);
+    @SuppressWarnings("unchecked")
+    static Map<String, Object> analyze(File folder, String name, boolean includeToolkits, Object overrides) throws IOException {
+        long t0 = System.currentTimeMillis(); Loaded l = load(folder, name); RuleSettings rs = settings(folder);
+        if (overrides instanceof Map) rs = rs.mergedWith(RuleSettings.fromJson((Map<String, Object>) overrides).prune(analyzer.rules())); else if (overrides != null && !String.valueOf(overrides).trim().isEmpty()) rs = rs.mergedWith(RuleSettings.fromJson(String.valueOf(overrides)).prune(analyzer.rules()));
+        rs.includeToolkits = includeToolkits; Map<String, Object> settings = rs.toAnalyzerSettings();
         Report r; synchronized (analyzer) { r = analyzer.analyze(l.model, settings); }
         String key = keyPrefix(name) + "-" + new java.text.SimpleDateFormat("yyyyMMdd-HHmmss").format(new Date()); r.id = key;
         Map<String, Object> json = r.toJson(); File dir = new File(folder, ".tca"); dir.mkdirs();
@@ -107,20 +122,10 @@ public class Facade {
         @SuppressWarnings("unchecked") Map<String, Object> summary = (Map<String, Object>) json.get("summary");
         return Json.obj("reportKey", key, "fileName", name, "fileSize", l.model.fileSize, "fileModified", iso(l.modified), "analyzedAt", r.analyzedAt, "engineVersion", r.engineVersion, "includeToolkits", includeToolkits,
                 "app", r.appName, "acronym", r.acronym, "snapshot", r.snapshotName, "projectId", r.projectId, "objects", r.objectCount, "toolkits", r.toolkitCount,
-                "findings", r.findings.size(), "score", summary.get("score"), "health", summary.get("healthScore"), "bySeverity", summary.get("bySeverity"), "durationMs", System.currentTimeMillis() - t0);
+                "findings", r.findings.size(), "score", summary.get("score"), "health", summary.get("healthScore"), "bySeverity", summary.get("bySeverity"), "customized", rs.isCustomized(), "durationMs", System.currentTimeMillis() - t0);
     }
-    /** Stored report rebuilt as a Report object (findings, rules, toolkit usage) for the PDF renderers. */
-    @SuppressWarnings("unchecked")
-    static Report reportObject(File folder, String key) throws IOException {
-        Map<String, Object> j = (Map<String, Object>) Json.parse(readReport(folder, key)); Report r = new Report(); Map<String, Object> app = (Map<String, Object>) j.get("app"), inv = (Map<String, Object>) j.get("inventory");
-        r.id = key; r.fileName = String.valueOf(j.get("fileName")); r.analyzedAt = String.valueOf(j.get("analyzedAt")); r.engineVersion = String.valueOf(j.get("engineVersion")); r.appName = String.valueOf(app.get("name")); r.acronym = String.valueOf(app.get("acronym")); r.snapshotName = String.valueOf(app.get("snapshot")); r.bawVersion = app.get("bawVersion") == null ? "" : String.valueOf(app.get("bawVersion"));
-        r.objectCount = ((Number) inv.get("objects")).intValue(); r.toolkitCount = ((Number) inv.get("toolkits")).intValue(); r.scriptCount = ((Number) inv.get("scripts")).intValue(); r.scriptLines = ((Number) inv.get("scriptLines")).intValue();
-        for (Object f : (List<Object>) j.get("findings")) r.findings.add(Finding.fromJson((Map<String, Object>) f));
-        for (Object x : (List<Object>) j.get("rules")) r.rules.add((Map<String, Object>) x);
-        if (j.get("diagnostics") instanceof List) for (Object d : (List<Object>) j.get("diagnostics")) r.diagnostics.add((Map<String, Object>) d);
-        if (j.get("toolkitUsage") instanceof Map) r.toolkitUsage = (Map<String, Object>) j.get("toolkitUsage");
-        return r;
-    }
+    /** Stored report rebuilt as a Report object (findings, rules, toolkit usage, settings) for the PDF renderers. */
+    static Report reportObject(File folder, String key) throws IOException { Report r = Report.fromJson(readReport(folder, key)); r.id = key; return r; }
     static String fileTag(Report r) { return ((r.acronym.isEmpty() ? r.appName : r.acronym) + "-" + r.snapshotName).replaceAll("[^A-Za-z0-9._-]+", "_"); }
     static Map<String, String> strMap(Map<String, Object> a) { Map<String, String> m = new HashMap<>(); for (Map.Entry<String, Object> e : a.entrySet()) if (e.getValue() != null) m.put(e.getKey(), String.valueOf(e.getValue())); return m; }
     static String readReport(File folder, String key) throws IOException {
@@ -138,7 +143,7 @@ public class Facade {
     @SuppressWarnings("unchecked")
     static Map<String, Object> reportOrAnalyze(File folder, String file, String key) throws IOException {
         if (key != null && !key.isEmpty()) { try { return (Map<String, Object>) Json.parse(readReport(folder, key)); } catch (FileNotFoundException e) { /* stored report gone: analyze again */ } }
-        Report r; synchronized (analyzer) { r = analyzer.analyze(load(folder, file).model, new HashMap<String, Object>()); } return r.toJson();
+        Report r; synchronized (analyzer) { r = analyzer.analyze(load(folder, file).model, settings(folder).toAnalyzerSettings()); } return r.toJson();
     }
     @SuppressWarnings("unchecked")
     static List<Finding> findings(Map<String, Object> report) { List<Finding> l = new ArrayList<>(); for (Object o : (List<Object>) report.get("findings")) l.add(Finding.fromJson((Map<String, Object>) o)); return l; }

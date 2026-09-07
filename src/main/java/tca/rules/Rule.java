@@ -13,5 +13,5 @@ public abstract class Rule {
     public Rule review() { confidence = "medium"; return this; }
     /** Produce findings for the whole model (rules iterate what they need through the context). */
     public abstract void check(RuleContext ctx, List<Finding> out);
-    public Map<String, Object> toJson() { return tca.util.Json.obj("id", id, "title", title, "category", category, "severity", severity.name(), "description", description, "remediation", remediation, "reference", reference, "confidence", confidence); }
+    public Map<String, Object> toJson() { return tca.util.Json.obj("id", id, "title", title, "category", category, "severity", severity.name(), "description", description, "remediation", remediation, "reference", reference, "confidence", confidence, "impact", impact); }
 }
