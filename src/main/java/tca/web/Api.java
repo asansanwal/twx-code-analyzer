@@ -56,7 +56,7 @@ public class Api {
     /** Handles an /api/ request; returns false for any other path (static content is served by the transport). */
     public boolean handle(Http x) throws IOException {
         String path = x.path(); if (!path.startsWith("/api/")) return false;
-        try { api(x, store(x)); } catch (ApiException e) { json(x, e.code, Json.obj("error", e.getMessage())); } catch (java.nio.file.NoSuchFileException | FileNotFoundException e) { json(x, 404, Json.obj("error", "unknown report")); } catch (Exception e) { e.printStackTrace(); json(x, 500, Json.obj("error", String.valueOf(e))); }
+        try { api(x, store(x)); } catch (ApiException e) { json(x, e.code, Json.obj("error", e.getMessage())); } catch (java.nio.file.NoSuchFileException | FileNotFoundException e) { json(x, 404, Json.obj("error", "unknown report")); } catch (IllegalArgumentException e) { json(x, 400, Json.obj("error", e.getMessage())); } catch (tca.util.TimedText.Timeout e) { json(x, 400, Json.obj("error", e.getMessage())); } catch (Exception e) { e.printStackTrace(); json(x, 500, Json.obj("error", String.valueOf(e))); }
         return true;
     }
 
@@ -84,7 +84,7 @@ public class Api {
         String t = x.cookie(COOKIE);
         if (t == null || !t.matches("[0-9a-f]{32}")) { byte[] b = new byte[16]; RANDOM.nextBytes(b); StringBuilder sb = new StringBuilder(); for (byte v : b) sb.append(String.format("%02x", v & 0xff)); t = sb.toString();
             boolean https = "https".equalsIgnoreCase(x.header("X-Forwarded-Proto")); x.setHeader("Set-Cookie", COOKIE + "=" + t + "; Path=/; Max-Age=31536000; HttpOnly; SameSite=Lax" + (https ? "; Secure" : "")); }
-        return new Store(new File(new File(root, "ws"), t));
+        return new Store(tca.util.SafePath.child(new File(root, "ws"), t));
     }
     protected static String key(Store st, String id) { return st.root.getName() + "/" + id; }
     // on DELETE a workspace left empty disappears with its last analysis (see the /api/report branch)

@@ -48,7 +48,7 @@ public class AnalyzerServlet extends HttpServlet {
 
     @Override protected void service(HttpServletRequest req, HttpServletResponse res) throws ServletException, IOException {
         String p = req.getPathInfo();
-        if (p == null || p.isEmpty()) { if (!req.getRequestURI().endsWith("/")) { res.sendRedirect(req.getRequestURI() + "/"); return; } p = "/"; }   // the UI uses relative URLs: the root needs its trailing slash
+        if (p == null || p.isEmpty()) { if (!req.getRequestURI().endsWith("/")) { res.sendRedirect(req.getContextPath() + req.getServletPath() + "/"); return; } p = "/"; }   // the UI uses relative URLs: the root needs its trailing slash (target built from the deployment paths, not from the request URI)
         Request r = new Request(req, res, p); res.setHeader("X-Frame-Options", "SAMEORIGIN"); res.setHeader("X-Content-Type-Options", "nosniff"); res.setHeader("Referrer-Policy", "same-origin");
         if (api.handle(r)) return;
         if (p.equals("/")) p = "/index.html";

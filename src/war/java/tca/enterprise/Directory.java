@@ -40,15 +40,15 @@ public class Directory {
 
     // ---- policies ---------------------------------------------------------------------------------------------------
     public List<Map<String, Object>> policies() { List<Map<String, Object>> l = new ArrayList<>(); File[] fs = policiesDir.listFiles(); if (fs != null) { Arrays.sort(fs); for (File f : fs) if (f.getName().endsWith(".json")) { Map<String, Object> p = readObject(f); if (!p.isEmpty()) l.add(p); } } return l; }
-    public Map<String, Object> policy(String id) { if (id == null || id.isEmpty() || !id.equals(safeId(id))) return null; Map<String, Object> p = readObject(new File(policiesDir, id + ".json")); return p.isEmpty() ? null : p; }
+    public Map<String, Object> policy(String id) { if (id == null || id.isEmpty() || !id.equals(safeId(id))) return null; Map<String, Object> p = readObject(tca.util.SafePath.child(policiesDir, id + ".json")); return p.isEmpty() ? null : p; }
     public Map<String, Object> savePolicy(Map<String, Object> p, String by) throws IOException {
         String id = safeId(str(p, "id").isEmpty() ? str(p, "name") : str(p, "id")); if (id.isEmpty() || id.equals("default") || id.equals("custom")) throw new IllegalArgumentException("policy id '" + id + "' is reserved or empty");
         Map<String, Object> old = policy(id); int version = old == null ? 1 : ((Number) (old.get("version") == null ? 0 : old.get("version"))).intValue() + 1;
         Map<String, Object> clean = Json.obj("id", id, "name", str(p, "name").isEmpty() ? id : str(p, "name"), "description", str(p, "description"), "version", version, "updatedAt", now(), "updatedBy", by == null ? "" : by,
                 "settings", p.get("settings") instanceof Map ? p.get("settings") : new LinkedHashMap<String, Object>(), "gates", p.get("gates") instanceof Map ? p.get("gates") : new LinkedHashMap<String, Object>());
-        write(new File(policiesDir, id + ".json"), clean); return clean;
+        write(tca.util.SafePath.child(policiesDir, id + ".json"), clean); return clean;
     }
-    public boolean deletePolicy(String id) { if (id == null || !id.equals(safeId(id))) return false; return new File(policiesDir, id + ".json").delete(); }
+    public boolean deletePolicy(String id) { if (id == null || !id.equals(safeId(id))) return false; return tca.util.SafePath.child(policiesDir, id + ".json").delete(); }
 
     // ---- Process Center connections ---------------------------------------------------------------------------------
     public List<Map<String, Object>> connections() { return readList(connectionsFile); }
@@ -65,13 +65,14 @@ public class Directory {
         String pw = str(c, "password"); if (pw.isEmpty() && old != null) pw = str(old, "password");   // an empty password keeps the stored one
         String type = str(c, "type").equalsIgnoreCase("studio") ? "studio" : "pc", auth = str(c, "auth").toLowerCase(); if (type.equals("studio") && !auth.equals("bearer") && !auth.equals("basic") && !auth.equals("zen-apikey")) auth = "zen"; if (type.equals("pc")) auth = "basic";
         String apiKey = str(c, "apiKey"); if (apiKey.isEmpty() && old != null) apiKey = str(old, "apiKey"); String token = str(c, "token"); if (token.isEmpty() && old != null) token = str(old, "token");
-        Map<String, Object> clean = Json.obj("id", id, "name", str(c, "name").isEmpty() ? id : str(c, "name"), "type", type, "url", url, "contextRoot", type.equals("studio") ? (c.get("contextRoot") == null ? "/bas" : str(c, "contextRoot")) : "", "auth", auth, "user", str(c, "user"), "password", pw, "apiKey", apiKey, "token", token, "designerUrl", str(c, "designerUrl"), "savedBy", str(c, "savedBy"), "savedAt", now());
+        String certificate = c.get("certificate") == null && old != null ? str(old, "certificate") : tca.baw.Tls.normalize(str(c, "certificate"));   // absent keeps the stored certificate, empty removes it
+        Map<String, Object> clean = Json.obj("id", id, "name", str(c, "name").isEmpty() ? id : str(c, "name"), "type", type, "url", url, "contextRoot", type.equals("studio") ? (c.get("contextRoot") == null ? "/bas" : str(c, "contextRoot")) : "", "auth", auth, "user", str(c, "user"), "password", pw, "apiKey", apiKey, "token", token, "certificate", certificate, "designerUrl", str(c, "designerUrl"), "savedBy", str(c, "savedBy"), "savedAt", now());
         boolean found = false; for (int i = 0; i < all.size(); i++) if (str(all.get(i), "id").equals(id)) { all.set(i, clean); found = true; } if (!found) all.add(clean);
         write(file, all); return clean;
     }
     static synchronized boolean deleteConnectionIn(File file, String id) throws IOException { List<Map<String, Object>> all = readList(file); boolean removed = false; for (Iterator<Map<String, Object>> it = all.iterator(); it.hasNext();) if (str(it.next(), "id").equals(id)) { it.remove(); removed = true; } if (removed) { if (all.isEmpty()) file.delete(); else write(file, all); } return removed; }
     /** Connection without its password (for the UI). */
-    public static Map<String, Object> publicConnection(Map<String, Object> c) { Map<String, Object> m = new LinkedHashMap<>(c); m.put("password", ""); m.put("hasPassword", !str(c, "password").isEmpty()); m.put("apiKey", ""); m.put("hasApiKey", !str(c, "apiKey").isEmpty()); m.put("token", ""); m.put("hasToken", !str(c, "token").isEmpty()); if (str(c, "type").isEmpty()) m.put("type", "pc"); return m; }
+    public static Map<String, Object> publicConnection(Map<String, Object> c) { Map<String, Object> m = new LinkedHashMap<>(c); m.put("password", ""); m.put("hasPassword", !str(c, "password").isEmpty()); m.put("apiKey", ""); m.put("hasApiKey", !str(c, "apiKey").isEmpty()); m.put("token", ""); m.put("hasToken", !str(c, "token").isEmpty()); m.put("certificateInfo", tca.baw.Tls.describe(str(c, "certificate"))); if (str(c, "type").isEmpty()) m.put("type", "pc"); return m; }
 
     // ---- per workspace ----------------------------------------------------------------------------------------------
     public static Map<String, Object> workspaceConfig(File wsRoot) { return readObject(new File(wsRoot, "workspace.json")); }

@@ -49,9 +49,8 @@ public final class BpdParser {
             b.lanes.add(lane);
         }
         // flows: <flow id=...> elements carry name/condition; the endpoints come from the ports of the flow objects (<outputPort><flow ref=.../>)
-        Matcher fm = Pattern.compile("<flow id=\"([^\"]*)\"([^>]*)>(.*?)</flow>", Pattern.DOTALL).matcher(x);
-        while (fm.find()) {
-            BpdModel.Flow f = new BpdModel.Flow(); f.id = fm.group(1); f.connectionType = Xml.attrOf(fm.group(2), "connectionType"); String fb = fm.group(3);
+        for (String[] el : Xml.elements(x, "flow")) { if (!el[0].startsWith("<flow id=\"")) continue;   // <flow ref=.../> inside the ports are not flows
+            BpdModel.Flow f = new BpdModel.Flow(); f.id = Xml.attrOf(el[0], "id"); f.connectionType = Xml.attrOf(el[0], "connectionType"); String fb = el[1];
             f.name = Xml.text(fb, "name"); f.condition = Xml.text(fb, "expression"); f.isDefault = fb.contains("<isDefaultFlow>true") || fb.contains("<isDefault>true") || fb.contains("<defaultFlow>true"); b.flows.add(f);
         }
         Map<String, BpdModel.Flow> byId = new HashMap<>(); for (BpdModel.Flow f : b.flows) byId.put(f.id, f);

@@ -132,9 +132,10 @@ The verdict document: `verdict` (passed | failed | no-gate), `checks[]` (name, l
 
 ## Repositories
 
-* **Process Center**: URL of the Process Center, user name and password (basic authentication for the listing, form login and the console's export servlet for the export, self-signed certificates accepted after a failed handshake). Tested against the lab Process Center.
+* **Process Center**: URL of the Process Center, user name and password (basic authentication for the listing, form login and the console's export servlet for the export). Tested against the lab Process Center.
 * **Business Automation Studio**: platform (Zen) URL, context root of Workflow Authoring (default `/bas`), authentication `zen` (user + password), `zen-apikey` (user + API key), `bearer` (token) or `basic`. The platform token comes from `/icp4d-api/v1/authorize` (fallback `/v1/preauth/validateAuth`); listing and export use the same repository API and servlet as the Process Center with the `Authorization` header. Validated against a simulator that mirrors the documented platform behaviour; no live Cloud Pak was available for this release.
 * Definitions can be saved per workspace (URL, user, password / API key / token; deletable by the user) or shared by administrators; values entered on the page or in a request override a definition for that request.
+* **TLS**: the JVM trust store decides whether a repository certificate is accepted (import a self-signed certificate with `keytool -importcert` or run the server with `-Djavax.net.ssl.trustStore`). Alternatively a definition or a request carries the server certificate (`certificate`, PEM text; "Server certificate" field on the page and in the administration): then exactly that certificate is trusted for the connection, whatever its host name, and no other. A failed handshake answers 502 with the reason. There is no "accept any certificate" option (removed in 1.3.1: earlier versions retried a failed handshake trusting any certificate).
 * The listing returns applications with `tracks[]` (id, name, isDefault, snapshots) and a flat `snapshots[]`; snapshot `tip` marks the current working version of a track (exportable).
 
 ## Security review summary

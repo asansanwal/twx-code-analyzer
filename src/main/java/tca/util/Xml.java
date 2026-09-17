@@ -20,6 +20,17 @@ public final class Xml {
     public static String attr(String xml, String name, String attr) {
         Matcher m = Pattern.compile("<" + Pattern.quote(name) + "\\b[^>]*?\\b" + Pattern.quote(attr) + "=\"([^\"]*)\"").matcher(xml); return m.find() ? unescape(m.group(1)) : "";
     }
+    /** Start tag of the first {@code <name ...>} element at or after {@code from} ("" when absent): a linear scan, used where a regular expression over a whole export would backtrack. */
+    public static String openTag(String xml, String name, int from) {
+        int i = from;
+        while ((i = xml.indexOf("<" + name, i)) >= 0) { int a = i + name.length() + 1; if (a < xml.length() && (Character.isWhitespace(xml.charAt(a)) || xml.charAt(a) == '>' || xml.charAt(a) == '/')) { int e = xml.indexOf('>', a); return e < 0 ? "" : xml.substring(i, e + 1); } i = a; }
+        return "";
+    }
+    /** The {@code <name ...>...</name>} elements of a document as {start tag, body} pairs (elements of the same name are not nested in the files read here); linear scan. */
+    public static List<String[]> elements(String xml, String name) {
+        List<String[]> out = new ArrayList<>(); int i = 0; String close = "</" + name + ">";
+        while (true) { String open = openTag(xml, name, i); if (open.isEmpty()) return out; int s = xml.indexOf(open, i), bodyStart = s + open.length(); if (open.endsWith("/>")) { out.add(new String[] { open, "" }); i = bodyStart; continue; } int e = xml.indexOf(close, bodyStart); if (e < 0) return out; out.add(new String[] { open, xml.substring(bodyStart, e) }); i = e + close.length(); }
+    }
     public static String attrOf(String elementOpenTag, String attr) { Matcher m = Pattern.compile("\\b" + Pattern.quote(attr) + "=\"([^\"]*)\"").matcher(elementOpenTag); return m.find() ? unescape(m.group(1)) : ""; }
     public static boolean bool(String xml, String name) { return "true".equals(text(xml, name)); }
     public static int integer(String xml, String name, int def) { try { String t = text(xml, name); return t.isEmpty() ? def : Integer.parseInt(t.trim()); } catch (NumberFormatException e) { return def; } }

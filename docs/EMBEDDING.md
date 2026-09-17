@@ -53,7 +53,7 @@ String result = new tca.baw.Facade().call(op, argsJson, folder);
 | `pdf` | `reportKey`, `sev`, `cat`, `rule`, `type`, `conf`, `q`, `sort` | findings PDF as `{fileName, base64}` (same filter as the web UI) |
 | `toolkitUsagePdf` | `reportKey`, `keys` (`k1|k2`, empty = all) | toolkit usage PDF as `{fileName, base64}` |
 | `rules` | | rule catalogue with the effective severity, impact, enabled and customized flags |
-| `export` | `url`, `user`, `password`, `snapshotId`, `fileName` | exports a Process Center snapshot into the folder (form login + ImportExportServlet); the only network call of the engine, made on explicit request |
+| `export` | `url`, `user`, `password`, `snapshotId`, `fileName`, `certificate` (optional) | exports a Process Center snapshot into the folder (form login + ImportExportServlet); the only network call of the engine, made on explicit request. TLS: the JVM trust store decides; for a self-signed Process Center pass its certificate (PEM) in `certificate` - exactly that certificate is then trusted. There is no trust-all mode |
 | `deleteFile` | `fileName` | removes a TWX file and its stored reports |
 
 Models are cached (last three files, invalidated when the file changes). Analyses are serialised; a 40 MB export analyzes in about 10 seconds with a 1 GB heap.

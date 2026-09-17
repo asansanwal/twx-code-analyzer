@@ -1,5 +1,15 @@
 # Change log
 
+## 1.3.1 (2026-09-17) - security fixes
+
+Fixes for the 43 alerts GitHub code scanning (CodeQL) reported on 1.3; all deliveries rebuilt, behaviour otherwise unchanged (findings identical on the reference exports). Details: [SECURITY-REVIEW-WAR.md](SECURITY-REVIEW-WAR.md).
+
+* **Repository TLS**: the "retry trusting any certificate" fallback of the Process Center, Studio and export clients is gone (it allowed a machine-in-the-middle). The JVM trust store decides, or a definition / request carries the server certificate (`certificate`, PEM) which is then the only certificate trusted for that connection. New "Server certificate" field on the Process Center page and in Administration > Connections; `certificate` in the connection, `pc/apps`, `pc/import`, `pc/evaluate` bodies and in the facade `export` operation. A failed handshake answers 502 with guidance.
+* **Search**: a regular expression is validated before it is compiled (length, no repeated groups, no back references; 400 with the reason) and the search runs under a time budget.
+* **Analysis**: package.xml and BPD flows are parsed with linear scans; every pattern rule runs with a time budget per script, a script that exhausts it gets an INFO "Rule skipped" finding instead of stalling the analysis. TCA-JS-013 no longer backtracks.
+* **Files**: report ids, workspace tokens, account and team keys and policy ids resolve through one containment check (`SafePath`) in addition to the existing pattern validation. Bad ids answer 400.
+* **Servlet**: the root redirect is built from the deployment paths, not from the request URI.
+
 ## 1.3 (2026-09-07) - web application (WAR) enterprise edition
 
 Only the WAR delivery changed in behaviour; the desktop app, the command line and the embedding facade are unchanged (the shared code gained extension points that stay dormant there). Details: [WEB-APPLICATION.md](WEB-APPLICATION.md), security notes: [SECURITY-REVIEW-WAR.md](SECURITY-REVIEW-WAR.md), test results: [TEST-REPORT-1.3.md](TEST-REPORT-1.3.md).

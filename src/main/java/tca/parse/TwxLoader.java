@@ -12,7 +12,6 @@ import tca.util.Xml;
 public final class TwxLoader {
     private TwxLoader() {}
     private static final Pattern OBJECT = Pattern.compile("<object id=\"([^\"]*)\" versionId=\"([^\"]*)\" name=\"([^\"]*)\" type=\"([^\"]*)\"");
-    private static final Pattern DEP = Pattern.compile("<dependency [^>]*id=\"([^\"]*)\"[^>]*>(.*?)</dependency>", Pattern.DOTALL);
 
     public static TwxModel load(File f) throws IOException { byte[] b = java.nio.file.Files.readAllBytes(f.toPath()); TwxModel m = load(b); m.fileName = f.getName(); return m; }
 
@@ -61,16 +60,15 @@ public final class TwxLoader {
         int r0 = pkg.indexOf("<p:package"), r1 = r0 >= 0 ? pkg.indexOf('>', r0) : -1;
         if (r1 > r0) { String root = pkg.substring(r0, r1); p.buildVersion = Xml.attrOf(root, "buildVersion"); p.buildId = Xml.attrOf(root, "buildId"); }
         int t0 = pkg.indexOf("<target>"), t1 = pkg.indexOf("</target>"); String target = t0 >= 0 && t1 > t0 ? pkg.substring(t0, t1) : pkg;
-        Matcher pm = Pattern.compile("<project [^>]*>").matcher(target);
-        if (pm.find()) { String pr = pm.group(); p.id = Xml.attrOf(pr, "id"); p.name = Xml.attrOf(pr, "name"); p.acronym = Xml.attrOf(pr, "shortName"); p.toolkit = "true".equals(Xml.attrOf(pr, "isToolkit")); p.description = Xml.attrOf(pr, "description"); }
-        Matcher sm = Pattern.compile("<snapshot [^>]*>").matcher(target); if (sm.find()) { p.snapshotId = Xml.attrOf(sm.group(), "id"); p.snapshotName = Xml.attrOf(sm.group(), "name"); p.snapshotDate = Xml.attrOf(sm.group(), "originalCreationDate"); }
-        Matcher bm = Pattern.compile("<branch [^>]*>").matcher(target); if (bm.find()) { p.branchId = Xml.attrOf(bm.group(), "id"); p.branchName = Xml.attrOf(bm.group(), "name"); }
-        Matcher dm = DEP.matcher(pkg);
-        while (dm.find()) {
-            TwxPackage.Dependency d = new TwxPackage.Dependency(); String body = dm.group(2);
-            Matcher x = Pattern.compile("<project [^>]*>").matcher(body); if (x.find()) { d.projectId = Xml.attrOf(x.group(), "id"); d.name = Xml.attrOf(x.group(), "name"); d.acronym = Xml.attrOf(x.group(), "shortName"); d.system = "true".equals(Xml.attrOf(x.group(), "isSystem")); }
-            Matcher y = Pattern.compile("<snapshot [^>]*>").matcher(body); if (y.find()) { d.snapshotId = Xml.attrOf(y.group(), "id"); d.snapshotName = Xml.attrOf(y.group(), "name"); }
-            Matcher z = Pattern.compile("<branch [^>]*>").matcher(body); if (z.find()) d.branchId = Xml.attrOf(z.group(), "id");
+        String pr = Xml.openTag(target, "project", 0);
+        if (!pr.isEmpty()) { p.id = Xml.attrOf(pr, "id"); p.name = Xml.attrOf(pr, "name"); p.acronym = Xml.attrOf(pr, "shortName"); p.toolkit = "true".equals(Xml.attrOf(pr, "isToolkit")); p.description = Xml.attrOf(pr, "description"); }
+        String sn = Xml.openTag(target, "snapshot", 0); if (!sn.isEmpty()) { p.snapshotId = Xml.attrOf(sn, "id"); p.snapshotName = Xml.attrOf(sn, "name"); p.snapshotDate = Xml.attrOf(sn, "originalCreationDate"); }
+        String br = Xml.openTag(target, "branch", 0); if (!br.isEmpty()) { p.branchId = Xml.attrOf(br, "id"); p.branchName = Xml.attrOf(br, "name"); }
+        for (String[] dep : Xml.elements(pkg, "dependency")) {
+            TwxPackage.Dependency d = new TwxPackage.Dependency(); String body = dep[1];
+            String x = Xml.openTag(body, "project", 0); if (!x.isEmpty()) { d.projectId = Xml.attrOf(x, "id"); d.name = Xml.attrOf(x, "name"); d.acronym = Xml.attrOf(x, "shortName"); d.system = "true".equals(Xml.attrOf(x, "isSystem")); }
+            String y = Xml.openTag(body, "snapshot", 0); if (!y.isEmpty()) { d.snapshotId = Xml.attrOf(y, "id"); d.snapshotName = Xml.attrOf(y, "name"); }
+            String z = Xml.openTag(body, "branch", 0); if (!z.isEmpty()) d.branchId = Xml.attrOf(z, "id");
             p.dependencies.add(d);
         }
         Matcher om = OBJECT.matcher(pkg);

@@ -7,7 +7,7 @@ import tca.rules.*;
 
 /** Runs the rule set over a TWX model and produces a Report (findings ranked by score, then severity, then path). */
 public class Analyzer {
-    public static final String VERSION = "1.3";
+    public static final String VERSION = "1.3.1";
     private final List<Rule> rules;
     public Analyzer() { this(RuleSet.all()); }
     public Analyzer(List<Rule> rules) { this.rules = rules; }

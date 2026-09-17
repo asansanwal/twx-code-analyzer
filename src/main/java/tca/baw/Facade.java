@@ -75,7 +75,7 @@ public class Facade {
         if (op.equals("settings")) return settings(folder).document(analyzer.rules());
         if (op.equals("saveSettings")) { Object v = a.get("settings"); RuleSettings rs = (v instanceof Map ? RuleSettings.fromJson((Map<String, Object>) v) : RuleSettings.fromJson(v == null ? "" : String.valueOf(v))).prune(analyzer.rules()); saveSettings(folder, rs); return Json.obj("saved", true, "customized", rs.isCustomized(), "warnings", rs.warnings, "settings", rs.document(analyzer.rules())); }
         if (op.equals("resetSettings")) { saveSettings(folder, new RuleSettings()); return Json.obj("saved", true, "customized", false, "warnings", new ArrayList<Object>(), "settings", new RuleSettings().document(analyzer.rules())); }
-        if (op.equals("export")) return ProcessCenterExport.export(str(a, "url"), str(a, "user"), str(a, "password"), str(a, "snapshotId"), new File(folder, safeName(str(a, "fileName"))));
+        if (op.equals("export")) return ProcessCenterExport.export(str(a, "url"), str(a, "user"), str(a, "password"), str(a, "snapshotId"), new File(folder, safeName(str(a, "fileName"))), str(a, "certificate"));
         if (op.equals("deleteFile")) return deleteFile(folder, str(a, "fileName"));
         throw new IllegalArgumentException("unknown operation '" + op + "'");
     }

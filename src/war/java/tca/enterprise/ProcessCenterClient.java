@@ -4,17 +4,16 @@ import java.io.*;
 import java.net.*;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
-import javax.net.ssl.*;
 import tca.util.Json;
 
 /** Read access to a Process Center: the list of process applications and their snapshots (REST /rest/bpm/wle/v1/processApps, basic authentication). */
 public final class ProcessCenterClient {
     private ProcessCenterClient() {}
     @SuppressWarnings("unchecked")
-    public static List<Map<String, Object>> apps(String baseUrl, String user, String password) throws IOException {
+    /** @param certificate the server certificate to trust (PEM), empty for the JVM trust store */
+    public static List<Map<String, Object>> apps(String baseUrl, String user, String password, String certificate) throws IOException {
         String base = baseUrl.trim(); while (base.endsWith("/")) base = base.substring(0, base.length() - 1);
-        String body; try { body = get(base + "/rest/bpm/wle/v1/processApps", user, password, false); } catch (SSLException e) { body = get(base + "/rest/bpm/wle/v1/processApps", user, password, true); }
-        return parseApps(body);
+        return parseApps(get(base + "/rest/bpm/wle/v1/processApps", user, password, certificate));
     }
     /** The processApps listing (JSON text) as applications with snapshots and tracks. */
     @SuppressWarnings("unchecked")
@@ -33,9 +32,9 @@ public final class ProcessCenterClient {
         Collections.sort(out, new Comparator<Map<String, Object>>() { public int compare(Map<String, Object> a, Map<String, Object> b) { return String.valueOf(a.get("name")).compareToIgnoreCase(String.valueOf(b.get("name"))); } });
         return out;
     }
-    static String get(String url, String user, String password, boolean trustAll) throws IOException {
+    static String get(String url, String user, String password, String certificate) throws IOException {
         HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
-        if (trustAll && c instanceof HttpsURLConnection) { HttpsURLConnection h = (HttpsURLConnection) c; h.setSSLSocketFactory(tca.baw.ProcessCenterExport.trustAllFactory()); h.setHostnameVerifier(new HostnameVerifier() { public boolean verify(String host, SSLSession s) { return true; } }); }
+        tca.baw.Tls.apply(c, certificate);
         c.setRequestMethod("GET"); c.setConnectTimeout(15000); c.setReadTimeout(60000); c.setRequestProperty("Accept", "application/json"); c.setRequestProperty("Authorization", "Basic " + Base64.getEncoder().encodeToString((user + ":" + (password == null ? "" : password)).getBytes(StandardCharsets.UTF_8)));
         int code = c.getResponseCode(); InputStream in = code >= 400 ? c.getErrorStream() : c.getInputStream(); ByteArrayOutputStream bo = new ByteArrayOutputStream(); if (in != null) { byte[] buf = new byte[65536]; int n; while ((n = in.read(buf)) > 0) bo.write(buf, 0, n); in.close(); } c.disconnect();
         if (code == 401 || code == 403) throw new IOException("Process Center refused the credentials (HTTP " + code + ")"); if (code >= 400) throw new IOException("Process Center answered HTTP " + code);

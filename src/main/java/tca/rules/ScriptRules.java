@@ -3,6 +3,7 @@ package tca.rules;
 import java.util.*;
 import java.util.regex.*;
 import tca.model.*;
+import tca.util.TimedText;
 
 /** JavaScript rules (server scripts, conditions, mappings, coach view handlers): security, deprecated APIs, performance, robustness, size.
  *  Pattern based (regex on the code with strings/comments stripped) plus a Rhino syntax check when the Rhino jar is on the classpath. */
@@ -12,12 +13,15 @@ public final class ScriptRules {
 
     /** Regex rule over every script; the pattern is applied to the code with comments and string literals blanked out unless rawStrings is true. */
     static abstract class PatternRule extends Rule {
+        /** Time budget of one pattern over one script; a script that exhausts it gets an INFO finding instead of blocking the analysis. */
+        static final long MATCH_BUDGET_MS = 2000;
         final Pattern p; final boolean rawStrings;
         PatternRule(String id, String title, String cat, Severity sev, String desc, String rem, String ref, String regex, boolean rawStrings) { super(id, title, cat, sev, desc, rem, ref); p = Pattern.compile(regex, Pattern.MULTILINE); this.rawStrings = rawStrings; }
         boolean skip(Script s) { return s.kind.equals("template"); }
         public void check(RuleContext c, List<Finding> out) {
-            for (Script s : c.allScripts()) { if (skip(s)) continue; String code = rawStrings ? s.code : strip(s.code); Matcher m = p.matcher(code); int n = 0; String ev = "";
-                while (m.find() && n < 5) { n++; if (ev.isEmpty()) ev = line(s.code, code, m.start()); }
+            for (Script s : c.allScripts()) { if (skip(s)) continue; String code = rawStrings ? s.code : strip(s.code); Matcher m = p.matcher(new TimedText(code, MATCH_BUDGET_MS, s.location)); int n = 0; String ev = "";
+                try { while (m.find() && n < 5) { n++; if (ev.isEmpty()) ev = line(s.code, code, m.start()); } }
+                catch (TimedText.Timeout t) { Finding f = Finding.of(this, s.object, s.itemId, itemName(s), s.location, "Rule skipped on this script: " + t.getMessage(), ""); f.severity = Severity.INFO.name(); f.score = 0; out.add(f); continue; }
                 if (n > 0) out.add(Finding.of(this, s.object, s.itemId, itemName(s), s.location, message(s, n, ev), ev)); }
         }
         String message(Script s, int n, String ev) { return title + " in " + s.location + (n > 1 ? " (" + n + " occurrences)" : ""); }
@@ -66,7 +70,7 @@ public final class ScriptRules {
                     if (n > 0) out.add(Finding.of(this, s.object, s.itemId, itemName(s), s.location, n + " undeclared variable(s) " + names + " in " + s.location, ev)); }
             }
         });
-        l.add(new PatternRule("TCA-JS-013", "Empty catch block", "Quality", Severity.MAJOR, "An exception is caught and ignored; failures become invisible and later steps run with wrong data.", "Log the error (log.error) and set an error outcome, or rethrow (throw e) so the error event fires.", "", "catch\\s*\\([^)]*\\)\\s*\\{\\s*\\}", false) {});
+        l.add(new PatternRule("TCA-JS-013", "Empty catch block", "Quality", Severity.MAJOR, "An exception is caught and ignored; failures become invisible and later steps run with wrong data.", "Log the error (log.error) and set an error outcome, or rethrow (throw e) so the error event fires.", "", "catch\\s*\\([^()]*\\)\\s*\\{\\s*\\}", false) {});
         l.add(new PatternRule("TCA-JS-014", "Use of == null / == undefined comparisons with type coercion", "Quality", Severity.INFO, "Loose equality (==) with strings/numbers relies on type coercion and is a frequent source of subtle bugs (0 == '' is true).", "Use === / !== except for the deliberate == null idiom.", "", "[^=!<>]==[^=]\\s*(?:\"|'|\\d)|(?:\"|'|\\d)\\s*==[^=]", false) { String message(Script s, int n, String ev) { return "Loose equality (==) with a literal in " + s.location + (n > 1 ? " (" + n + " occurrences)" : ""); } });
         l.add(new PatternRule("TCA-JS-015", "tw.system.model / tw.system.executeServiceByName usage", "Quality", Severity.MINOR, "Dynamic service invocation by name (tw.system.executeServiceByName, tw.system.model.findProcessByName) is not visible as a dependency: 'where used' misses it, refactoring breaks it silently and it bypasses type checking.", "Attach the service directly (linked service / sub process step) so the dependency is explicit.", "", "tw\\.system\\.executeServiceByName|tw\\.system\\.model\\.find\\w+ByName|tw\\.system\\.startProcessByName", false) {});
         l.add(new PatternRule("TCA-JS-016", "Direct DOM manipulation with global selectors in a coach view", "UI", Severity.MINOR, "The coach view script queries the whole document (document.getElementById, $('#id'), document.querySelector without this.context.element). With several instances of the view on a page or in a table the wrong element is hit.", "Scope every DOM query to the view: this.context.element.querySelector(...) / $(this.context.element).find(...).", "", "document\\.getElementById\\s*\\(|document\\.querySelector(All)?\\s*\\(|\\$\\s*\\(\\s*[\"']#", false) { boolean skip(Script s) { return !s.object.type.equals("coachView"); } });
