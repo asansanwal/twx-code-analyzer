@@ -40,7 +40,7 @@ public final class Searcher {
                 case ')': { flush(out, literal); if (--depth < 0) throw new IllegalArgumentException("unbalanced parentheses in the search expression"); if (i + 1 < n && "*+?{".indexOf(query.charAt(i + 1)) >= 0) throw new IllegalArgumentException("a repeated group (\"...)" + query.charAt(i + 1) + "\") is not supported in the search expression; repeat characters or classes instead"); out.append(')'); break; }
                 case '{': { flush(out, literal); int close = query.indexOf('}', i); if (close < 0) throw new IllegalArgumentException("unclosed {n,m} in the search expression"); String[] parts = query.substring(i + 1, close).split(",", -1); if (parts.length > 2) throw new IllegalArgumentException("invalid repeat count in the search expression");
                     int lo = repeat(parts[0]), hi = parts.length == 1 ? lo : parts[1].isEmpty() ? -1 : repeat(parts[1]); if (hi >= 0 && hi < lo) throw new IllegalArgumentException("invalid repeat count in the search expression");
-                    out.append('{').append(lo); if (parts.length == 2) { out.append(','); if (hi >= 0) out.append(hi); } out.append('}'); i = close; break; }
+                    out.append('{'); digits(out, lo); if (parts.length == 2) { out.append(','); if (hi >= 0) digits(out, hi); } out.append('}'); i = close; break; }
                 case '.': flush(out, literal); out.append('.'); break;
                 case '*': flush(out, literal); out.append('*'); break;
                 case '+': flush(out, literal); out.append('+'); break;
@@ -61,6 +61,9 @@ public final class Searcher {
     public static final int MAX_REPEAT = 100;
     static final String ESCAPES = "wWsSdDbBtn", CLASS_ESCAPES = "[]\\-^", CLASS_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 _-^.,:;!?@#$%&*+=/<>'\"()|{}~`";
     static void flush(StringBuilder out, StringBuilder literal) { if (literal.length() > 0) { out.append(Pattern.quote(literal.toString())); literal.setLength(0); } }
+    /** Appends a range-checked repeat count (0..{@link #MAX_REPEAT}) digit by digit from a constant table, like every other token of the rebuilt expression. */
+    static void digits(StringBuilder out, int v) { if (v >= 100) out.append(DIGITS.charAt(v / 100)); if (v >= 10) out.append(DIGITS.charAt(v / 10 % 10)); out.append(DIGITS.charAt(v % 10)); }
+    static final String DIGITS = "0123456789";
     static int repeat(String s) { if (!s.matches("[0-9]{1,3}")) throw new IllegalArgumentException("invalid repeat count in the search expression"); int v = Integer.parseInt(s); if (v > MAX_REPEAT) throw new IllegalArgumentException("repeat counts above " + MAX_REPEAT + " are not supported in the search expression"); return v; }
     /** Search results; throws IllegalArgumentException for a rejected expression and {@link TimedText.Timeout} when the budget is used up. */
     public static List<Map<String, Object>> search(RuleContext c, String query, boolean regex, boolean caseSensitive, String scope, Set<String> types, boolean includeToolkits, int limit) {
