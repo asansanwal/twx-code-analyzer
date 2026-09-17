@@ -15,21 +15,33 @@ public final class Searcher {
     /** Time budget of one search over one export. */
     public static final long BUDGET_MS = 5000;
     /**
-     * A user-typed regular expression, checked before it is compiled: at most {@link #MAX_QUERY} characters, no quantifier on a group
-     * ({@code (a|b)*}, {@code (\w+\s?)+} - the constructions whose matching time explodes) and no back references. Throws IllegalArgumentException.
+     * A user-typed regular expression, rebuilt from the constructions the search supports before it is compiled: literals, character
+     * classes, {@code . * + ? {n,m} | ^ $}, the escapes {@code \\w \\W \\s \\S \\d \\D \\b \\B \\t \\n} and escaped punctuation, plain and
+     * non-capturing groups, {@code (?i)}. Rejected (IllegalArgumentException): more than {@link #MAX_QUERY} characters, a quantifier on a
+     * group ({@code (a|b)*}, {@code (\\w+\\s?)+} - the constructions whose matching time explodes), back references, look-arounds,
+     * named groups and other escapes, unbalanced groups or classes, and anything the Java regex compiler refuses.
      */
     public static String sanitizeRegex(String query) {
         if (query.length() > MAX_QUERY) throw new IllegalArgumentException("the search expression is longer than " + MAX_QUERY + " characters");
-        boolean escaped = false, inClass = false;
-        for (int i = 0; i < query.length(); i++) { char ch = query.charAt(i);
-            if (escaped) { if (Character.isDigit(ch) || ch == 'k') throw new IllegalArgumentException("back references are not supported in the search expression"); escaped = false; continue; }
-            if (ch == '\\') { escaped = true; continue; }
-            if (inClass) { if (ch == ']') inClass = false; continue; }
-            if (ch == '[') { inClass = true; continue; }
-            if (ch == ')' && i + 1 < query.length() && "*+?{".indexOf(query.charAt(i + 1)) >= 0) throw new IllegalArgumentException("a repeated group (\"...)" + query.charAt(i + 1) + "\") is not supported in the search expression; repeat characters or classes instead");
+        StringBuilder out = new StringBuilder(); boolean inClass = false; int depth = 0;
+        for (int i = 0; i < query.length(); i++) {
+            char ch = query.charAt(i);
+            if (ch == '\\') {
+                if (i + 1 >= query.length()) throw new IllegalArgumentException("the search expression ends with a backslash");
+                char e = query.charAt(++i);
+                if (Character.isLetterOrDigit(e) && "wWsSdDbBtn".indexOf(e) < 0) throw new IllegalArgumentException("the escape \\" + e + " is not supported in the search expression (back references, named classes)");
+                out.append('\\').append(e); continue;
+            }
+            if (inClass) { if (ch == ']') inClass = false; out.append(ch); continue; }
+            if (ch == '[') { inClass = true; out.append(ch); continue; }
+            if (ch == '(') { depth++; if (i + 1 < query.length() && query.charAt(i + 1) == '?' && !query.startsWith("(?:", i) && !query.startsWith("(?i)", i)) throw new IllegalArgumentException("look-arounds and named groups are not supported in the search expression"); }
+            if (ch == ')') { if (--depth < 0) throw new IllegalArgumentException("unbalanced parentheses in the search expression"); if (i + 1 < query.length() && "*+?{".indexOf(query.charAt(i + 1)) >= 0) throw new IllegalArgumentException("a repeated group (\"...)" + query.charAt(i + 1) + "\") is not supported in the search expression; repeat characters or classes instead"); }
+            out.append(ch);
         }
-        try { Pattern.compile(query); } catch (PatternSyntaxException e) { throw new IllegalArgumentException("invalid regular expression: " + e.getDescription()); }
-        return query;
+        if (inClass || depth != 0) throw new IllegalArgumentException("unbalanced brackets or parentheses in the search expression");
+        String safe = out.toString();
+        try { Pattern.compile(safe); } catch (PatternSyntaxException e) { throw new IllegalArgumentException("invalid regular expression: " + e.getDescription()); }
+        return safe;
     }
     /** Search results; throws IllegalArgumentException for a rejected expression and {@link TimedText.Timeout} when the budget is used up. */
     public static List<Map<String, Object>> search(RuleContext c, String query, boolean regex, boolean caseSensitive, String scope, Set<String> types, boolean includeToolkits, int limit) {
