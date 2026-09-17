@@ -28,7 +28,7 @@ public class ServiceModel {
                 case "Script": return "script"; case "SubProcess": return "call"; case "ExitPoint": return "exit"; case "Coach": case "CoachNG": return "coach"; case "Switch": return "decision";
                 case "Note": return "note"; case "StayOnPage": return "stay"; case "Join": return "join"; case "Fork": return "fork"; case "Loop": return "loop"; case "SCAConnector": case "JavaConnector": case "SKELConnector": case "WSConnector": case "WebServiceConnector": return "integration";
                 case "ContentIntegration": return "content"; case "ExternalActivity": return "external"; case "TrackingPoint": return "tracking"; case "Postpone": return "postpone"; case "ECMConnector": return "content"; case "RestConnector": return "integration"; case "Timer": return "timer"; case "EventReceiver": return "event";
-                default: return component.toLowerCase();
+                default: return component.toLowerCase(java.util.Locale.ROOT);
             }
         }
     }

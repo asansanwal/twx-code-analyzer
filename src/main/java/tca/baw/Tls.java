@@ -29,7 +29,8 @@ public final class Tls {
         try {
             KeyStore ks = KeyStore.getInstance(KeyStore.getDefaultType()); ks.load(null, null); ks.setCertificateEntry("pinned", cert);
             TrustManagerFactory tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm()); tmf.init(ks);
-            SSLContext ctx = SSLContext.getInstance("TLS"); ctx.init(null, tmf.getTrustManagers(), null); return ctx;
+            SSLContext ctx; try { ctx = SSLContext.getInstance("TLSv1.3"); } catch (java.security.NoSuchAlgorithmException e) { ctx = SSLContext.getInstance("TLSv1.2"); }   // 1.3 + 1.2 on current runtimes, 1.2 on old ones; never SSL / TLS 1.0 / 1.1
+            ctx.init(null, tmf.getTrustManagers(), null); return ctx;
         } catch (java.security.GeneralSecurityException e) { throw new IOException("cannot create the SSL context for the pinned certificate: " + e.getMessage()); }
     }
     /** The X.509 certificate of a PEM text ({@code -----BEGIN CERTIFICATE-----} block, or bare base64). */

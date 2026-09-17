@@ -51,12 +51,15 @@ public class Api {
     }
 
     /** Error with an HTTP status (hooks of a subclass: 403 forbidden, 413 quota exceeded ...). */
+    /** Content-Security-Policy of every page and answer: same-origin only, no inline scripts (inline styles are used by the generated HTML), no plug-ins, no framing by other sites. */
+    public static final String CSP = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'self'; object-src 'none'; base-uri 'self'; form-action 'self'";
     public static class ApiException extends RuntimeException { public final int code; public ApiException(int code, String message) { super(message); this.code = code; } }
 
     /** Handles an /api/ request; returns false for any other path (static content is served by the transport). */
     public boolean handle(Http x) throws IOException {
         String path = x.path(); if (!path.startsWith("/api/")) return false;
-        try { api(x, store(x)); } catch (ApiException e) { json(x, e.code, Json.obj("error", e.getMessage())); } catch (java.nio.file.NoSuchFileException | FileNotFoundException e) { json(x, 404, Json.obj("error", "unknown report")); } catch (IllegalArgumentException e) { json(x, 400, Json.obj("error", e.getMessage())); } catch (tca.util.TimedText.Timeout e) { json(x, 400, Json.obj("error", e.getMessage())); } catch (Exception e) { e.printStackTrace(); json(x, 500, Json.obj("error", String.valueOf(e))); }
+        try { api(x, store(x)); } catch (ApiException e) { json(x, e.code, Json.obj("error", e.getMessage())); } catch (java.nio.file.NoSuchFileException | FileNotFoundException e) { json(x, 404, Json.obj("error", "unknown report")); } catch (IllegalArgumentException e) { json(x, 400, Json.obj("error", e.getMessage())); } catch (tca.util.TimedText.Timeout e) { json(x, 400, Json.obj("error", e.getMessage())); } catch (java.nio.file.FileSystemException e) { e.printStackTrace(); json(x, 500, Json.obj("error", "file system error - details are in the server log")); }   // these messages carry server paths
+        catch (IOException e) { e.printStackTrace(); json(x, 500, Json.obj("error", e.getMessage() == null ? "input / output error" : e.getMessage())); } catch (Exception e) { e.printStackTrace(); json(x, 500, Json.obj("error", "internal error - details are in the server log")); }   // repository and file errors carry their message (the user must see what the server answered); anything unexpected does not
         return true;
     }
 
@@ -135,7 +138,7 @@ public class Api {
     /** Analyses a TWX into the store (the whole pipeline: hooks, engine, storage, caches) and returns the report JSON. Used by the upload endpoint and by queued analyses. */
     public Map<String, Object> analyzeBytes(Http x, Store store, byte[] twx, String fileName, boolean toolkits, String overridesJson, Analyzer an) throws Exception {
         beforeAnalyze(x, store, twx, fileName);
-        long t0 = System.currentTimeMillis(); TwxModel m = TwxLoader.load(twx); m.fileName = fileName;
+        long t0 = System.currentTimeMillis(); TwxModel m; try { m = TwxLoader.load(twx); } catch (IOException | RuntimeException e) { if (e instanceof RuntimeException) e.printStackTrace(); throw new ApiException(400, "the upload is not a readable TWX export: " + e.getMessage()); } m.fileName = fileName;
         RuleSettings rs = settingsFor(x, store); if (overridesJson != null && !overridesJson.isEmpty()) rs = rs.mergedWith(RuleSettings.fromJson(overridesJson).prune(an.rules()));   // request-level overrides (thresholds, rules) on top of the stored settings
         rs.includeToolkits = toolkits; Map<String, Object> settings = rs.toAnalyzerSettings();
         Report r; synchronized (an) { r = an.analyze(m, settings); } String id = store.newId(); r.id = id; Map<String, Object> json = r.toJson();

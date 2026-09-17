@@ -41,6 +41,7 @@ public class WebServer {
         public void send(int code, String ct, byte[] body, String disposition) throws IOException {
             x.getResponseHeaders().set("Content-Type", ct); if (disposition != null) x.getResponseHeaders().set("Content-Disposition", disposition);
             String p = path(); x.getResponseHeaders().set("Cache-Control", p.startsWith("/vendor") || p.startsWith("/webfonts") ? "max-age=86400" : "no-cache");
+            x.getResponseHeaders().set("X-Frame-Options", "SAMEORIGIN"); x.getResponseHeaders().set("X-Content-Type-Options", "nosniff"); x.getResponseHeaders().set("Referrer-Policy", "same-origin"); x.getResponseHeaders().set("Content-Security-Policy", Api.CSP);
             x.sendResponseHeaders(code, body.length); try (OutputStream o = x.getResponseBody()) { o.write(body); }
         }
     }

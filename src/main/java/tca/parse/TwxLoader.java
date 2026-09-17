@@ -54,9 +54,10 @@ public final class TwxLoader {
         return out;
     }
 
-    static TwxPackage parsePackage(Map<String, byte[]> entries, long zipSize, TwxModel model) {
+    static TwxPackage parsePackage(Map<String, byte[]> entries, long zipSize, TwxModel model) throws IOException {
         TwxPackage p = new TwxPackage(); p.zipSize = zipSize;
-        String pkg = new String(entries.get("META-INF/package.xml"), StandardCharsets.UTF_8);
+        byte[] pkgBytes = entries.get("META-INF/package.xml"); if (pkgBytes == null) throw new IOException("not a TWX export: no META-INF/package.xml in the file" + (entries.isEmpty() ? " (not a zip archive)" : ""));
+        String pkg = new String(pkgBytes, StandardCharsets.UTF_8);
         int r0 = pkg.indexOf("<p:package"), r1 = r0 >= 0 ? pkg.indexOf('>', r0) : -1;
         if (r1 > r0) { String root = pkg.substring(r0, r1); p.buildVersion = Xml.attrOf(root, "buildVersion"); p.buildId = Xml.attrOf(root, "buildId"); }
         int t0 = pkg.indexOf("<target>"), t1 = pkg.indexOf("</target>"); String target = t0 >= 0 && t1 > t0 ? pkg.substring(t0, t1) : pkg;
@@ -79,7 +80,7 @@ public final class TwxLoader {
         }
         for (String n : entries.keySet()) if (n.startsWith("files/")) {
             p.files.add(n); String[] parts = n.split("/"); TwxObject asset = parts.length >= 2 ? p.objects.get(parts[1]) : null;
-            if (asset != null && asset.name.toLowerCase().endsWith(".js") && entries.get(n).length < 3_000_000) p.jsFiles.put(asset.id, new String(entries.get(n), StandardCharsets.UTF_8));
+            if (asset != null && asset.name.toLowerCase(java.util.Locale.ROOT).endsWith(".js") && entries.get(n).length < 3_000_000) p.jsFiles.put(asset.id, new String(entries.get(n), StandardCharsets.UTF_8));
         }
         return p;
     }

@@ -25,13 +25,13 @@ public class BpdModel {
         public String gatewayType = "", attachedToId = "";   // attachedToId: boundary event attached to this activity
         public boolean interrupting = true;
         /** eventType codes (Process Designer): 1 start, 2 end/terminate?, 3 intermediate, 6 error ... - kept as text and also checked by name/xml */
-        public boolean isErrorEvent() { return xml.contains("<eventActionType>4") || xml.contains("errorCode") || name.toLowerCase().contains("error"); }
+        public boolean isErrorEvent() { return xml.contains("<eventActionType>4") || xml.contains("errorCode") || name.toLowerCase(java.util.Locale.ROOT).contains("error"); }
         public boolean isTimerEvent() { return xml.contains("<eventActionType>2") || xml.contains("<timerSettings") || xml.contains("<timerType>"); }
         public boolean isMessageEvent() { return xml.contains("<eventActionType>1") || xml.contains("<ucaId>") || xml.contains("<messageEvent"); }
         public String xml = "";
         public final List<ServiceModel.Mapping> mappings = new ArrayList<>();
         public String kind() {
-            String t = componentType.toLowerCase();
+            String t = componentType.toLowerCase(java.util.Locale.ROOT);
             if (t.contains("gateway")) return "gateway"; if (t.contains("event")) return "event"; if (t.contains("activity")) return "activity"; if (t.contains("note")) return "note"; return t;
         }
     }

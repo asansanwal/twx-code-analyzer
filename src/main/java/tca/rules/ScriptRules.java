@@ -11,15 +11,18 @@ public final class ScriptRules {
     private ScriptRules() {}
     static final String CAT = "Script";
 
+    /** Time budget of one pattern over one script; a PatternRule turns an exhausted budget into an INFO finding, any other rule fails with the reason (see Analyzer). */
+    static final long MATCH_BUDGET_MS = 2000;
+    /** Script text for a regular expression: every rule pattern runs over a {@link TimedText} so that a pathological script cannot hold a worker. */
+    static CharSequence timed(String text, Script s) { return timed(text, s == null ? "a script" : s.location); }
+    static CharSequence timed(String text, String what) { return new TimedText(text, MATCH_BUDGET_MS, what); }
     /** Regex rule over every script; the pattern is applied to the code with comments and string literals blanked out unless rawStrings is true. */
     static abstract class PatternRule extends Rule {
-        /** Time budget of one pattern over one script; a script that exhausts it gets an INFO finding instead of blocking the analysis. */
-        static final long MATCH_BUDGET_MS = 2000;
         final Pattern p; final boolean rawStrings;
         PatternRule(String id, String title, String cat, Severity sev, String desc, String rem, String ref, String regex, boolean rawStrings) { super(id, title, cat, sev, desc, rem, ref); p = Pattern.compile(regex, Pattern.MULTILINE); this.rawStrings = rawStrings; }
         boolean skip(Script s) { return s.kind.equals("template"); }
         public void check(RuleContext c, List<Finding> out) {
-            for (Script s : c.allScripts()) { if (skip(s)) continue; String code = rawStrings ? s.code : strip(s.code); Matcher m = p.matcher(new TimedText(code, MATCH_BUDGET_MS, s.location)); int n = 0; String ev = "";
+            for (Script s : c.allScripts()) { if (skip(s)) continue; String code = rawStrings ? s.code : strip(s.code); Matcher m = p.matcher(timed(code, s)); int n = 0; String ev = "";
                 try { while (m.find() && n < 5) { n++; if (ev.isEmpty()) ev = line(s.code, code, m.start()); } }
                 catch (TimedText.Timeout t) { Finding f = Finding.of(this, s.object, s.itemId, itemName(s), s.location, "Rule skipped on this script: " + t.getMessage(), ""); f.severity = Severity.INFO.name(); f.score = 0; out.add(f); continue; }
                 if (n > 0) out.add(Finding.of(this, s.object, s.itemId, itemName(s), s.location, message(s, n, ev), ev)); }
@@ -47,7 +50,7 @@ public final class ScriptRules {
         }.impact(2));
         l.add(new Rule("TCA-JS-024", "Variable inserted into a SQL template", "Security", Severity.MAJOR, "A text-template script (Server Script in 'text' mode) builds a SQL statement and inserts variables with <#= tw.local.x #>. The inserted value is not escaped: user-controlled values allow SQL injection and even harmless values break the statement when they contain quotes.",
                 "Use parameter markers (?) with the SQLParameter list of the SQL Execute Statement service; insert only trusted identifiers (table names from EPVs) through templates.", "IDA check-service-item-sql-injection-in-script") {
-            public void check(RuleContext c, List<Finding> out) { Pattern sql = Pattern.compile("(?is)\\b(select|insert|update|delete|merge|call)\\b"), ins = Pattern.compile("<#=\\s*(tw\\.[A-Za-z0-9_.\\[\\]]+)[^#]*#>"); for (Script s : c.allScripts()) { if (!s.kind.equals("template") || !sql.matcher(s.code).find()) continue; Matcher m = ins.matcher(s.code); int n = 0; StringBuilder ev = new StringBuilder(); while (m.find()) { String v = m.group(1).toLowerCase(); if (v.contains("tablename") || v.contains("schema") || v.startsWith("tw.epv.") || v.startsWith("tw.env.")) continue; n++; if (ev.length() < 200) ev.append(m.group(1)).append(' '); } if (n > 0) out.add(Finding.of(this, s.object, s.itemId, itemName(s), s.location, n + " variable(s) inserted into a SQL template in " + s.location, ev.toString().trim())); } }
+            public void check(RuleContext c, List<Finding> out) { Pattern sql = Pattern.compile("(?is)\\b(select|insert|update|delete|merge|call)\\b"), ins = Pattern.compile("<#=\\s*(tw\\.[A-Za-z0-9_.\\[\\]]+)[^#]*#>"); for (Script s : c.allScripts()) { if (!s.kind.equals("template") || !sql.matcher(timed(s.code, s)).find()) continue; Matcher m = ins.matcher(timed(s.code, s)); int n = 0; StringBuilder ev = new StringBuilder(); while (m.find()) { String v = m.group(1).toLowerCase(java.util.Locale.ROOT); if (v.contains("tablename") || v.contains("schema") || v.startsWith("tw.epv.") || v.startsWith("tw.env.")) continue; n++; if (ev.length() < 200) ev.append(m.group(1)).append(' '); } if (n > 0) out.add(Finding.of(this, s.object, s.itemId, itemName(s), s.location, n + " variable(s) inserted into a SQL template in " + s.location, ev.toString().trim())); } }
         }.impact(2));
         l.add(new PatternRule("TCA-JS-002", "Access to internal BPM database tables", "Security", Severity.CRITICAL, "The script references internal repository / runtime tables (LSW_*, BPM_*). Their structure is unsupported, changes between versions and direct access breaks migrations and support.",
                 "Use the REST API, the JavaScript API (tw.system, TWProcessInstance ...) or the Performance Data Warehouse views instead of the internal tables.", "IDA check-service-item-contains-inner-table-in-script", "(?i)\\bLSW_[A-Z_]+|\\bBPM_[A-Z_]+_T\\b|\\bLSW\\.|\\bBPMDB\\.", true) {}.impact(2));
@@ -65,7 +68,7 @@ public final class ScriptRules {
             public void check(RuleContext c, List<Finding> out) {
                 for (Script s : c.allScripts()) { if (skip(s)) continue; String code = strip(s.code); Set<String> declared = new HashSet<>(); Matcher d = Pattern.compile("\\b(?:var|let|const|function)\\s+([A-Za-z_$][A-Za-z0-9_$]*)|\\bvar\\s+[^;]*?,\\s*([A-Za-z_$][A-Za-z0-9_$]*)|function\\s*[A-Za-z_$]*\\s*\\(([^)]*)\\)").matcher(code);
                     while (d.find()) { if (d.group(1) != null) declared.add(d.group(1)); if (d.group(2) != null) declared.add(d.group(2)); if (d.group(3) != null) for (String a : d.group(3).split(",")) declared.add(a.trim()); }
-                    Matcher m = p.matcher(code); int n = 0; String ev = ""; Set<String> names = new TreeSet<>();
+                    Matcher m = p.matcher(timed(code, s)); int n = 0; String ev = ""; Set<String> names = new TreeSet<>();
                     while (m.find()) { String nm = m.group(1); if (declared.contains(nm) || nm.equals("event") || nm.equals("context")) continue; if (names.add(nm)) { n++; if (ev.isEmpty()) ev = line(s.code, code, m.start()); } }
                     if (n > 0) out.add(Finding.of(this, s.object, s.itemId, itemName(s), s.location, n + " undeclared variable(s) " + names + " in " + s.location, ev)); }
             }
@@ -84,7 +87,7 @@ public final class ScriptRules {
             public void check(RuleContext c, List<Finding> out) { if (!Parse.available()) return; for (Script s : c.allScripts()) { if (!s.kind.equals("script") && !s.kind.equals("handler") && !s.kind.equals("inline")) continue; String err = Parse.firstError(s.code, s.object.type.equals("coachView") ? 200 : 180); if (err != null) out.add(Finding.of(this, s.object, s.itemId, itemName(s), s.location, "Syntax error in " + s.location + ": " + err, "")); } }
         }.impact(2));
         l.add(new Rule("TCA-JS-022", "ES6+ syntax in a server-side script", "Migration", Severity.MAJOR, "Server scripts run on the Rhino engine (ECMAScript 5 in BPM 8.x / BAW 18-20). Arrow functions, let/const, template literals, classes and spread fail at runtime on those versions.", "Use ES5 syntax in server scripts (var, function, string concatenation); keep ES6 for client-side coach view code only.", "") {
-            public void check(RuleContext c, List<Finding> out) { Pattern p = Pattern.compile("=>|\\blet\\s+[A-Za-z_$]|\\bconst\\s+[A-Za-z_$]|`|\\bclass\\s+[A-Z]|\\.\\.\\.[A-Za-z_$]"); for (Script s : c.allScripts()) { if (s.object.type.equals("coachView") || !(s.kind.equals("script") || s.kind.equals("condition") || s.kind.equals("mapping") || s.kind.equals("expression"))) continue; Matcher m = p.matcher(strip(s.code)); if (m.find()) out.add(Finding.of(this, s.object, s.itemId, itemName(s), s.location, "ES6 syntax (" + m.group() + ") in server script " + s.location, line(s.code, strip(s.code), m.start()))); } }
+            public void check(RuleContext c, List<Finding> out) { Pattern p = Pattern.compile("=>|\\blet\\s+[A-Za-z_$]|\\bconst\\s+[A-Za-z_$]|`|\\bclass\\s+[A-Z]|\\.\\.\\.[A-Za-z_$]"); for (Script s : c.allScripts()) { if (s.object.type.equals("coachView") || !(s.kind.equals("script") || s.kind.equals("condition") || s.kind.equals("mapping") || s.kind.equals("expression"))) continue; Matcher m = p.matcher(timed(strip(s.code), s)); if (m.find()) out.add(Finding.of(this, s.object, s.itemId, itemName(s), s.location, "ES6 syntax (" + m.group() + ") in server script " + s.location, line(s.code, strip(s.code), m.start()))); } }
         });
         l.add(new Rule("TCA-JS-023", "Deeply nested code", "Quality", Severity.MINOR, "The script nests blocks more than 5 levels deep; deeply nested logic is error prone and hard to test.", "Extract nested blocks into functions / separate steps, use early returns.", "") {
             public void check(RuleContext c, List<Finding> out) { for (Script s : c.allScripts()) { int depth = 0, max = 0; String code = strip(s.code); for (int i = 0; i < code.length(); i++) { char ch = code.charAt(i); if (ch == '{') { depth++; max = Math.max(max, depth); } else if (ch == '}') depth--; } if (max > 5) out.add(Finding.of(this, s.object, s.itemId, itemName(s), s.location, "Nesting depth " + max + " in " + s.location, "")); } }

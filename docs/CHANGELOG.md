@@ -9,6 +9,7 @@ Fixes for the 43 alerts GitHub code scanning (CodeQL) reported on 1.3; all deliv
 * **Analysis**: package.xml and BPD flows are parsed with linear scans; every pattern rule runs with a time budget per script, a script that exhausts it gets an INFO "Rule skipped" finding instead of stalling the analysis. TCA-JS-013 no longer backtracks.
 * **Files**: report ids, workspace tokens, account and team keys and policy ids resolve through one containment check (`SafePath`) in addition to the existing pattern validation. Bad ids answer 400.
 * **Servlet**: the root redirect is built from the deployment paths, not from the request URI.
+* **Scanner campaign** (Semgrep, SpotBugs + FindSecBugs, Trivy, Retire.js, gitleaks, OWASP ZAP; results and dispositions in [SECURITY-SCAN-REPORT-1.3.1.md](SECURITY-SCAN-REPORT-1.3.1.md)): Swagger UI 5.33.0 (its DOMPurify had 20 open CVEs), `Content-Security-Policy` on every response (no inline scripts any more - the pages' `onclick` handlers became `data-href` attributes with one delegated listener), Dockerfile with a non-root user and a health check, `SecureRandom` ids, TLS 1.2+ context, every rule pattern under the time budget, `Locale.ROOT` case mapping, 400 instead of 500 for unreadable uploads, malformed finding keys and over-long ids, no exception or file-system text in error answers, `help/` and `swagger/` serve their index.
 
 ## 1.3 (2026-09-07) - web application (WAR) enterprise edition
 

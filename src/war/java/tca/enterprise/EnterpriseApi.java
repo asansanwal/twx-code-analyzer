@@ -50,10 +50,10 @@ public class EnterpriseApi extends Api {
         if (id.user == null && cfg.auth.equals("builtin")) { String su = auth.sessionUser(x.cookie(Auth.COOKIE)); if (su != null) { Map<String, Object> acc = auth.user(su); if (acc != null && !Boolean.TRUE.equals(acc.get("disabled"))) { id.user = su; id.source = "session"; } } }
         if (id.user != null) { Map<String, Object> acc = auth.user(id.user); if (acc != null) id.name = Directory.str(acc, "name"); if (id.name.isEmpty()) id.name = id.user; }
         if (!cfg.groupsHeader.isEmpty()) { String g = x.header(cfg.groupsHeader); if (g != null) for (String s : g.split("[,;]")) if (!s.trim().isEmpty()) id.groups.add(s.trim()); }
-        id.admin = id.user != null && (x.inRole(cfg.adminRole) || cfg.admins.contains(id.user.toLowerCase()) || auth.isAdmin(id.user) || (!cfg.adminGroup.isEmpty() && id.groups.contains(cfg.adminGroup)));
+        id.admin = id.user != null && (x.inRole(cfg.adminRole) || cfg.admins.contains(id.user.toLowerCase(java.util.Locale.ROOT)) || auth.isAdmin(id.user) || (!cfg.adminGroup.isEmpty() && id.groups.contains(cfg.adminGroup)));
         return id;
     }
-    static String wsKey(String user) { return user.toLowerCase().replaceAll("[^a-z0-9._@-]+", "_").replace("@", "_at_"); }
+    static String wsKey(String user) { return user.toLowerCase(java.util.Locale.ROOT).replaceAll("[^a-z0-9._@-]+", "_").replace("@", "_at_"); }
     /** The store of a personal workspace ({@code <data>/users/<key>}) or of a team ({@code <data>/teams/<id>}); the key is one path component under its base directory. */
     Store storeOf(String kind, String key) { return new Store(tca.util.SafePath.child(new File(root, kind), key)); }
 
@@ -92,7 +92,7 @@ public class EnterpriseApi extends Api {
     /** Outbound connections (webhooks, Process Center) go to http(s) hosts only, never to link-local / metadata addresses, and only to the allowed hosts when configured. */
     void checkOutbound(String url) {
         java.net.URI u; try { u = new java.net.URI(url.trim()); } catch (Exception e) { throw new ApiException(400, "invalid URL: " + url); }
-        String scheme = u.getScheme() == null ? "" : u.getScheme().toLowerCase(), host = u.getHost() == null ? "" : u.getHost().toLowerCase();
+        String scheme = u.getScheme() == null ? "" : u.getScheme().toLowerCase(java.util.Locale.ROOT), host = u.getHost() == null ? "" : u.getHost().toLowerCase(java.util.Locale.ROOT);
         if (!scheme.equals("http") && !scheme.equals("https") || host.isEmpty()) throw new ApiException(400, "only http(s) URLs with a host are allowed: " + url);
         if (host.startsWith("169.254.") || host.equals("metadata.google.internal") || host.startsWith("fe80:") || host.equals("[fe80::1]")) throw new ApiException(403, "outbound connection to " + host + " is not allowed");
         try { java.net.InetAddress a = java.net.InetAddress.getByName(host); if (a.isLinkLocalAddress()) throw new ApiException(403, "outbound connection to " + host + " is not allowed"); if (!cfg.outboundPrivate && (a.isLoopbackAddress() || a.isSiteLocalAddress() || a.isAnyLocalAddress())) throw new ApiException(403, "outbound connections to private or local addresses are not allowed on this server (" + host + ")"); } catch (java.net.UnknownHostException e) { throw new ApiException(400, "unknown host " + host); }
@@ -291,7 +291,7 @@ public class EnterpriseApi extends Api {
         String type = "pc", url = "", contextRoot = "/bas", auth = "basic", user = "", password = "", apiKey = "", token = "", designerUrl = "", certificate = "", connectionId = ""; String authorization;
         Repo(Map<String, Object> stored, Map<String, Object> req) {
             if (stored != null) { connectionId = Directory.str(stored, "id"); type = Directory.str(stored, "type").isEmpty() ? "pc" : Directory.str(stored, "type"); url = Directory.str(stored, "url"); contextRoot = Directory.str(stored, "contextRoot"); auth = Directory.str(stored, "auth"); user = Directory.str(stored, "user"); password = Directory.str(stored, "password"); apiKey = Directory.str(stored, "apiKey"); token = Directory.str(stored, "token"); designerUrl = Directory.str(stored, "designerUrl"); certificate = Directory.str(stored, "certificate"); }
-            if (req != null) { if (!str(req, "type").isEmpty()) type = str(req, "type").equalsIgnoreCase("studio") ? "studio" : "pc"; if (!str(req, "url").trim().isEmpty()) url = str(req, "url").trim(); if (req.get("contextRoot") != null) contextRoot = str(req, "contextRoot"); if (!str(req, "auth").isEmpty()) auth = str(req, "auth").toLowerCase();
+            if (req != null) { if (!str(req, "type").isEmpty()) type = str(req, "type").equalsIgnoreCase("studio") ? "studio" : "pc"; if (!str(req, "url").trim().isEmpty()) url = str(req, "url").trim(); if (req.get("contextRoot") != null) contextRoot = str(req, "contextRoot"); if (!str(req, "auth").isEmpty()) auth = str(req, "auth").toLowerCase(java.util.Locale.ROOT);
                 if (!str(req, "user").isEmpty()) { user = str(req, "user"); if (stored == null || !str(req, "password").isEmpty()) password = str(req, "password"); } else if (!str(req, "password").isEmpty()) password = str(req, "password"); if (!str(req, "apiKey").isEmpty()) apiKey = str(req, "apiKey"); if (!str(req, "token").isEmpty()) token = str(req, "token"); if (!str(req, "certificate").trim().isEmpty()) certificate = tca.baw.Tls.normalize(str(req, "certificate")); }
             if (type.equals("pc")) auth = "basic"; else if (auth.isEmpty()) auth = token.isEmpty() ? (apiKey.isEmpty() ? "zen" : "zen-apikey") : "bearer";
             if (url.isEmpty()) throw new ApiException(400, "the repository URL is required"); checkOutbound(url);
@@ -350,7 +350,7 @@ public class EnterpriseApi extends Api {
             Map<String, Object> s = Directory.suppressions(store.root);
             if (method.equals("GET")) { json(x, 200, s); return; }
             if (!w.manage) throw new ApiException(403, "only the owner or an administrator of this workspace can accept findings");
-            if (method.equals("PUT") || method.equals("POST")) { String key = str(body, "key"); if (key.isEmpty()) throw new ApiException(400, "key is required"); s.put(key, Json.obj("reason", str(body, "reason"), "by", who.user == null ? "anonymous" : who.user, "at", Directory.now(), "ruleId", key.substring(0, key.indexOf('|')), "path", str(body, "path"))); Directory.saveSuppressions(store.root, s); restamp(store); audit(x, "finding.accept", Json.obj("key", key, "reason", str(body, "reason"))); json(x, 200, Json.obj("saved", true, "count", s.size())); return; }
+            if (method.equals("PUT") || method.equals("POST")) { String key = str(body, "key"); if (key.isEmpty()) throw new ApiException(400, "key is required"); if (key.indexOf('|') <= 0) throw new ApiException(400, "the finding key has the form <rule id>|<object id>|<location>"); s.put(key, Json.obj("reason", str(body, "reason"), "by", who.user == null ? "anonymous" : who.user, "at", Directory.now(), "ruleId", key.substring(0, key.indexOf('|')), "path", str(body, "path"))); Directory.saveSuppressions(store.root, s); restamp(store); audit(x, "finding.accept", Json.obj("key", key, "reason", str(body, "reason"))); json(x, 200, Json.obj("saved", true, "count", s.size())); return; }
             if (method.equals("DELETE")) { String key = q.get("key"); if (key == null) throw new ApiException(400, "key is required"); Object r = s.remove(key); Directory.saveSuppressions(store.root, s); restamp(store); audit(x, "finding.unaccept", Json.obj("key", key)); json(x, 200, Json.obj("deleted", r != null, "count", s.size())); return; }
         }
         if (op.equals("audit")) { if (!who.admin || !cfg.audit) throw new ApiException(403, "administrators only"); Integer limit = RuleSettings.intOf(q.get("limit")); json(x, 200, dir.auditTail(limit == null ? 200 : Math.min(limit, 5000))); return; }
@@ -388,7 +388,7 @@ public class EnterpriseApi extends Api {
                 if (snapshotId.isEmpty()) throw new ApiException(404, "snapshot " + (snapName.isEmpty() ? "(tip)" : "'" + snapName + "'") + " of " + appName + (trackName.isEmpty() ? "" : " track " + trackName) + " not found");
                 appName = String.valueOf(app.get("acronym"));
             }
-            String fileName = str(body, "fileName"); if (fileName.isEmpty()) fileName = safe(appName + "-" + snapName) + ".twx"; if (!fileName.toLowerCase().endsWith(".twx")) fileName += ".twx";
+            String fileName = str(body, "fileName"); if (fileName.isEmpty()) fileName = safe(appName + "-" + snapName) + ".twx"; if (!fileName.toLowerCase(java.util.Locale.ROOT).endsWith(".twx")) fileName += ".twx";
             File tmp = File.createTempFile("tca-export-", ".twx"); byte[] twx;
             try { repo.export(snapshotId, tmp); twx = java.nio.file.Files.readAllBytes(tmp.toPath()); } finally { tmp.delete(); }
             Map<String, Object> src = repo.source(); src.put("snapshotId", snapshotId); src.put("importedBy", who.user);

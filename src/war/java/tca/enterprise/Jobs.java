@@ -21,7 +21,7 @@ public class Jobs {
     public Jobs(int workers, Runner runner) { this.workers = Math.max(1, workers); this.runner = runner; pool = Executors.newFixedThreadPool(this.workers, new ThreadFactory() { public Thread newThread(Runnable r) { Thread t = new Thread(r, "tca-worker"); t.setDaemon(true); return t; } }); }
 
     public synchronized Job submit(Captured caller, Store st, String workspace, byte[] twx, String fileName, boolean toolkits, String source) {
-        final Job job = new Job(new java.text.SimpleDateFormat("yyyyMMdd-HHmmss").format(new Date()) + "-" + Integer.toHexString(new Random().nextInt(0xffff)), caller, st, workspace, twx, fileName, toolkits); job.source = source; jobs.put(job.id, job); prune();
+        final Job job = new Job(tca.web.Store.newId(), caller, st, workspace, twx, fileName, toolkits); job.source = source; jobs.put(job.id, job); prune();
         pool.submit(new Runnable() { public void run() {
             job.status = "running"; job.started = System.currentTimeMillis(); job.progress = "loading";
             Analyzer an = analyzers.get(); an.progress = new Analyzer.Progress() { public void step(String stage, int done, int total) { job.progress = stage.equals("rules") ? "rule " + done + " of " + total : stage; } };

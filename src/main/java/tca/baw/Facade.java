@@ -83,7 +83,7 @@ public class Facade {
     // ---- files ------------------------------------------------------------------------------------------------------
     static Map<String, Object> files(File folder) {
         List<Object> l = new ArrayList<>(); File[] fs = folder.listFiles();
-        if (fs != null) { Arrays.sort(fs); for (File f : fs) if (f.isFile() && f.getName().toLowerCase().endsWith(".twx")) l.add(Json.obj("name", f.getName(), "size", f.length(), "modified", iso(f.lastModified()))); }
+        if (fs != null) { Arrays.sort(fs); for (File f : fs) if (f.isFile() && f.getName().toLowerCase(java.util.Locale.ROOT).endsWith(".twx")) l.add(Json.obj("name", f.getName(), "size", f.length(), "modified", iso(f.lastModified()))); }
         return Json.obj("folder", folder.getAbsolutePath(), "files", l);
     }
     static Map<String, Object> deleteFile(File folder, String name) throws IOException {
@@ -158,7 +158,7 @@ public class Facade {
         if (name == null || name.isEmpty() || name.contains("/") || name.contains("\\") || name.contains("..") || name.startsWith(".")) throw new IllegalArgumentException("invalid file name '" + name + "'");
         return name;
     }
-    static String keyPrefix(String fileName) { String b = fileName.toLowerCase().endsWith(".twx") ? fileName.substring(0, fileName.length() - 4) : fileName; return b.replaceAll("[^A-Za-z0-9._]+", "_"); }
+    static String keyPrefix(String fileName) { String b = fileName.toLowerCase(java.util.Locale.ROOT).endsWith(".twx") ? fileName.substring(0, fileName.length() - 4) : fileName; return b.replaceAll("[^A-Za-z0-9._]+", "_"); }
     @SuppressWarnings("unchecked")
     static Map<String, Object> parseArgs(String args) { if (args == null || args.trim().isEmpty()) return new HashMap<>(); Object o = Json.parse(args); if (!(o instanceof Map)) throw new IllegalArgumentException("args must be a JSON object"); return (Map<String, Object>) o; }
     static String str(Map<String, Object> a, String k) { Object v = a.get(k); return v == null ? "" : String.valueOf(v); }

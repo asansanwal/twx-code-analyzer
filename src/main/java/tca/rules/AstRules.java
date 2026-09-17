@@ -150,9 +150,9 @@ public final class AstRules {
                 Pattern p = Pattern.compile("\\btw\\.local\\.([A-Za-z_$][\\w$]*)|\\btw\\.local\\[\\s*[\"']([A-Za-z_$][\\w$]*)[\"']\\s*\\]");
                 for (Script s : c.allScripts()) {
                     if (s.object.type.equals("coachView")) continue; Set<String> declared = c.declaredVariables(s.object); if (declared.isEmpty() && !(s.object.type.equals("process") || s.object.type.equals("bpd"))) continue;
-                    String code = s.kind.equals("template") ? s.code : ScriptRules.strip(s.code); Matcher m = p.matcher(code); Map<String, Integer> missing = new LinkedHashMap<>();
+                    String code = s.kind.equals("template") ? s.code : ScriptRules.strip(s.code); Matcher m = p.matcher(ScriptRules.timed(code, s)); Map<String, Integer> missing = new LinkedHashMap<>();
                     while (m.find()) { String name = m.group(1) != null ? m.group(1) : m.group(2); if (!declared.contains(name) && !missing.containsKey(name)) missing.put(name, m.start()); }
-                    for (Map.Entry<String, Integer> e : missing.entrySet()) out.add(Finding.of(this, s.object, s.itemId, ScriptRules.itemName(s), s.location, "tw.local." + e.getKey() + " is not declared in " + s.object.typeLabel().toLowerCase() + " '" + s.object.name + "' (used in " + s.location + ")", ScriptRules.line(s.code, code, e.getValue())));
+                    for (Map.Entry<String, Integer> e : missing.entrySet()) out.add(Finding.of(this, s.object, s.itemId, ScriptRules.itemName(s), s.location, "tw.local." + e.getKey() + " is not declared in " + s.object.typeLabel().toLowerCase(java.util.Locale.ROOT) + " '" + s.object.name + "' (used in " + s.location + ")", ScriptRules.line(s.code, code, e.getValue())));
                 }
             }
         });
@@ -188,7 +188,7 @@ public final class AstRules {
             Rule self() { return this; }
         });
         l.add(new Rule("TCA-JS-046", "Active debugger statement", "Quality", Severity.MAJOR, "A debugger statement is left in the code. In the browser it freezes the coach whenever developer tools are open; on the server it is dead weight that documents unfinished debugging.", "Remove the debugger statement.", "") {
-            public void check(RuleContext c, List<Finding> out) { Pattern p = Pattern.compile("(?m)^\\s*debugger\\s*;?|\\bdebugger\\s*;"); for (Script s : c.allScripts()) { if (s.kind.equals("template")) continue; String code = ScriptRules.strip(s.code); Matcher m = p.matcher(code); if (m.find()) out.add(Finding.of(this, s.object, s.itemId, ScriptRules.itemName(s), s.location, "debugger statement in " + s.location, ScriptRules.line(s.code, code, m.start()))); } }
+            public void check(RuleContext c, List<Finding> out) { Pattern p = Pattern.compile("(?m)^\\s*debugger\\s*;?|\\bdebugger\\s*;"); for (Script s : c.allScripts()) { if (s.kind.equals("template")) continue; String code = ScriptRules.strip(s.code); Matcher m = p.matcher(ScriptRules.timed(code, s)); if (m.find()) out.add(Finding.of(this, s.object, s.itemId, ScriptRules.itemName(s), s.location, "debugger statement in " + s.location, ScriptRules.line(s.code, code, m.start()))); } }
         });
         l.add(new Rule("TCA-JS-047", "parseInt without an explicit radix", "Quality", Severity.MINOR, "parseInt(value) without the radix argument interprets strings with a leading 0 as octal on older engines (Rhino, old browsers): parseInt('08') gives 0.",
                 "Always pass the radix: parseInt(value, 10).", "") {

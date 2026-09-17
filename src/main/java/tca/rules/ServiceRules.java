@@ -100,7 +100,7 @@ public final class ServiceRules {
         return l;
     }
     static Finding infoLoop(Rule r, TwxObject o, String id, ServiceModel.Item first, String path) { Finding f = Finding.of(r, o, id, first == null ? "" : first.name, "loop", "Loop in the flow (has an exit path; verify the exit condition is always reachable): " + path, ""); f.severity = Severity.INFO.name(); f.score = Severity.INFO.weight; return f; }
-    static boolean hasErrorLink(ServiceModel s, ServiceModel.Item it) { for (ServiceModel.Link k : s.links) if (k.fromItemId.equals(it.id) && (k.name.toLowerCase().contains("error") || k.endStateId.toLowerCase().contains("error"))) return true; return false; }
+    static boolean hasErrorLink(ServiceModel s, ServiceModel.Item it) { for (ServiceModel.Link k : s.links) if (k.fromItemId.equals(it.id) && (k.name.toLowerCase(java.util.Locale.ROOT).contains("error") || k.endStateId.toLowerCase(java.util.Locale.ROOT).contains("error"))) return true; return false; }
     static boolean reaches(ServiceModel s, String from, String target, Set<String> seen) { if (from.equals(target)) return true; if (!seen.add(from)) return false; for (ServiceModel.Link k : s.links) if (k.fromItemId.equals(from) && reaches(s, k.toItemId, target, seen)) return true; return false; }
     static int count(String s, String sub) { int n = 0, i = 0; while ((i = s.indexOf(sub, i)) >= 0) { n++; i += sub.length(); } return n; }
 }

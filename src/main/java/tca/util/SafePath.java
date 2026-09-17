@@ -8,7 +8,7 @@ public final class SafePath {
     private SafePath() {}
     /** {@code base/name} where {@code name} must be a single path component (no separators, no {@code ..}); the resolved path must stay directly under the base. */
     public static File child(File base, String name) {
-        if (name == null || name.isEmpty() || name.equals(".") || name.contains("..") || name.contains("/") || name.contains("\\")) throw new IllegalArgumentException("bad name");
+        if (name == null || name.isEmpty() || name.length() > 200 || name.equals(".") || name.contains("..") || name.contains("/") || name.contains("\\")) throw new IllegalArgumentException("bad name");   // 200: below every file system's component limit
         Path b = base.toPath().toAbsolutePath().normalize(), p = b.resolve(name).normalize();
         if (!p.startsWith(b) || !b.equals(p.getParent())) throw new IllegalArgumentException("bad name");
         return p.toFile();

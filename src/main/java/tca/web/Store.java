@@ -12,8 +12,10 @@ import tca.util.SafePath;
 public class Store {
     public final File root;
     public Store(File root) { this.root = root; }   // directories are created on the first write (a workspace that never stores anything leaves no trace)
-    public String newId() { return new java.text.SimpleDateFormat("yyyyMMdd-HHmmss").format(new Date()) + "-" + Integer.toHexString(new Random().nextInt(0xffff)); }
-    public File dir(String id) { if (id == null || !id.matches("[A-Za-z0-9\\-_]+")) throw new IllegalArgumentException("bad id"); return SafePath.child(root, id); }
+    static final java.security.SecureRandom RANDOM = new java.security.SecureRandom();
+    /** Report id: timestamp plus a random suffix (not a secret - ids are scoped to their workspace - but unpredictable all the same). */
+    public static String newId() { return new java.text.SimpleDateFormat("yyyyMMdd-HHmmss").format(new Date()) + "-" + Integer.toHexString(RANDOM.nextInt(0xffff)); }
+    public File dir(String id) { if (id == null || !id.matches("[A-Za-z0-9\\-_]{1,64}")) throw new IllegalArgumentException("bad id"); return SafePath.child(root, id); }
     public void save(String id, byte[] twx, String reportJson, Map<String, Object> meta) throws IOException { File d = dir(id); d.mkdirs(); Files.write(new File(d, "upload.twx").toPath(), twx); Files.write(new File(d, "report.json").toPath(), reportJson.getBytes(StandardCharsets.UTF_8)); Files.write(new File(d, "meta.json").toPath(), Json.writePretty(meta).getBytes(StandardCharsets.UTF_8)); }
     public String report(String id) throws IOException { return new String(Files.readAllBytes(new File(dir(id), "report.json").toPath()), StandardCharsets.UTF_8); }
     public byte[] twx(String id) throws IOException { return Files.readAllBytes(new File(dir(id), "upload.twx").toPath()); }

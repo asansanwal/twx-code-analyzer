@@ -27,7 +27,7 @@ public class Auth {
     public Auth(File dataDir, File adminsFile) { File root = new File(dataDir, "enterprise"); usersFile = new File(root, "users.json"); sessionsFile = new File(root, "sessions.json"); this.adminsFile = adminsFile; loadSessions(); }
 
     // ---- users --------------------------------------------------------------------------------------------------------
-    public static String userId(String email) { return email == null ? "" : email.trim().toLowerCase(); }
+    public static String userId(String email) { return email == null ? "" : email.trim().toLowerCase(java.util.Locale.ROOT); }
     public synchronized List<Map<String, Object>> users() { return Directory.readList(usersFile); }
     public synchronized Map<String, Object> user(String id) { for (Map<String, Object> u : users()) if (Directory.str(u, "id").equals(id)) return u; return null; }
     public static Map<String, Object> publicUser(Map<String, Object> u) { Map<String, Object> m = new LinkedHashMap<>(u); m.remove("passwordHash"); return m; }
@@ -89,8 +89,8 @@ public class Auth {
     // ---- administrators (properties file) ------------------------------------------------------------------------------
     public synchronized boolean isAdmin(String userId) {
         if (userId == null) return false; long m = adminsFile.isFile() ? adminsFile.lastModified() : 0;
-        if (m != adminsMtime) { adminsMtime = m; admins = new HashSet<>(); if (adminsFile.isFile()) try (Reader r = new InputStreamReader(new FileInputStream(adminsFile), StandardCharsets.UTF_8)) { Properties p = new Properties(); p.load(r); for (String k : p.stringPropertyNames()) { String v = p.getProperty(k).trim(); if (k.trim().equals("admins")) { for (String a : v.split("[,;\\s]+")) if (!a.isEmpty()) admins.add(a.toLowerCase()); } else if (v.equalsIgnoreCase("admin") || v.equalsIgnoreCase("true")) admins.add(k.trim().toLowerCase()); } } catch (IOException e) { System.err.println("admins file: " + e); } }
-        return admins.contains(userId.toLowerCase());
+        if (m != adminsMtime) { adminsMtime = m; admins = new HashSet<>(); if (adminsFile.isFile()) try (Reader r = new InputStreamReader(new FileInputStream(adminsFile), StandardCharsets.UTF_8)) { Properties p = new Properties(); p.load(r); for (String k : p.stringPropertyNames()) { String v = p.getProperty(k).trim(); if (k.trim().equals("admins")) { for (String a : v.split("[,;\\s]+")) if (!a.isEmpty()) admins.add(a.toLowerCase(java.util.Locale.ROOT)); } else if (v.equalsIgnoreCase("admin") || v.equalsIgnoreCase("true")) admins.add(k.trim().toLowerCase(java.util.Locale.ROOT)); } } catch (IOException e) { System.err.println("admins file: " + e); } }
+        return admins.contains(userId.toLowerCase(java.util.Locale.ROOT));
     }
     public File adminsFile() { return adminsFile; }
 }

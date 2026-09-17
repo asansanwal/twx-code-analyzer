@@ -64,9 +64,9 @@ public final class PdfReport {
     /** Same filter as the findings tab: sev=CRITICAL,MAJOR cat= rule= type= conf= q= sort=score|object|rule. */
     public static List<Finding> filterFindings(Report r, Map<String, String> q) {
         Set<String> sev = new HashSet<>(); if (q.containsKey("sev") && !q.get("sev").isEmpty()) sev.addAll(Arrays.asList(q.get("sev").split(",")));
-        String cat = q.get("cat"), rule = q.get("rule"), type = q.get("type"), conf = q.get("conf"), text = q.containsKey("q") ? q.get("q").toLowerCase() : "";
+        String cat = q.get("cat"), rule = q.get("rule"), type = q.get("type"), conf = q.get("conf"), text = q.containsKey("q") ? q.get("q").toLowerCase(java.util.Locale.ROOT) : "";
         List<Finding> l = new ArrayList<>();
-        for (Finding f : r.findings) { if (!sev.isEmpty() && !sev.contains(f.severity)) continue; if (cat != null && !cat.isEmpty() && !f.category.equals(cat)) continue; if (rule != null && !rule.isEmpty() && !f.ruleId.equals(rule)) continue; if (type != null && !type.isEmpty() && !f.objectTypeLabel.equals(type)) continue; if (conf != null && !conf.isEmpty() && !f.confidence.equals(conf)) continue; if (!text.isEmpty() && !(f.path() + " " + f.message + " " + f.title).toLowerCase().contains(text)) continue; l.add(f); }
+        for (Finding f : r.findings) { if (!sev.isEmpty() && !sev.contains(f.severity)) continue; if (cat != null && !cat.isEmpty() && !f.category.equals(cat)) continue; if (rule != null && !rule.isEmpty() && !f.ruleId.equals(rule)) continue; if (type != null && !type.isEmpty() && !f.objectTypeLabel.equals(type)) continue; if (conf != null && !conf.isEmpty() && !f.confidence.equals(conf)) continue; if (!text.isEmpty() && !(f.path() + " " + f.message + " " + f.title).toLowerCase(java.util.Locale.ROOT).contains(text)) continue; l.add(f); }
         String sort = q.get("sort");
         if ("object".equals(sort)) Collections.sort(l, new Comparator<Finding>() { public int compare(Finding a, Finding b) { int c = (a.objectName + a.itemName).compareTo(b.objectName + b.itemName); return c != 0 ? c : b.score - a.score; } });
         else if ("rule".equals(sort)) Collections.sort(l, new Comparator<Finding>() { public int compare(Finding a, Finding b) { int c = a.ruleId.compareTo(b.ruleId); return c != 0 ? c : b.score - a.score; } });

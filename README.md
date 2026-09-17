@@ -263,6 +263,7 @@ The desktop app parses files locally and listens on 127.0.0.1 only (`serve ... -
 * [docs/WEB-APPLICATION.md](docs/WEB-APPLICATION.md) - the web application (WAR) enterprise edition: features, configuration, identity, API and pipeline recipes, repositories, data layout
 * [docs/SECURITY-REVIEW-WAR.md](docs/SECURITY-REVIEW-WAR.md) - security review of the web application
 * [docs/TEST-REPORT-1.3.md](docs/TEST-REPORT-1.3.md) - functional test results of the web application
+* [docs/SECURITY-SCAN-REPORT-1.3.1.md](docs/SECURITY-SCAN-REPORT-1.3.1.md) - SAST / SCA / DAST scan results (CodeQL, Semgrep, SpotBugs + FindSecBugs, Trivy, Retire.js, gitleaks, OWASP ZAP) with dispositions
 * [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) - deploying the WAR (Liberty, WebSphere, Tomcat; Docker; the layout of the live demo)
 * [docs/CHANGELOG.md](docs/CHANGELOG.md) - what changed in each version
 * [docs/BUILD-AND-SIGNING.md](docs/BUILD-AND-SIGNING.md) - reproducible build, packaging, signed Windows launcher

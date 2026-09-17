@@ -19,7 +19,7 @@ public final class Studio {
     /** Authorization header value for a definition: Bearer token (given or obtained from Zen) or Basic. */
     @SuppressWarnings("unchecked")
     public static String authorization(String baseUrl, String auth, String user, String password, String apiKey, String token, String certificate) throws IOException {
-        String base = trim(baseUrl); auth = auth == null ? "" : auth.toLowerCase();
+        String base = trim(baseUrl); auth = auth == null ? "" : auth.toLowerCase(java.util.Locale.ROOT);
         if (auth.equals("bearer") || (auth.isEmpty() && token != null && !token.isEmpty())) { if (token == null || token.trim().isEmpty()) throw new IOException("a bearer token is required"); return "Bearer " + token.trim(); }
         if (auth.equals("basic")) return "Basic " + Base64.getEncoder().encodeToString((user + ":" + (password == null ? "" : password)).getBytes(StandardCharsets.UTF_8));
         // zen: user name + password, or user name + API key

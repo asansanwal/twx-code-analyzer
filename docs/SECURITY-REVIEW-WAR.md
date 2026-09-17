@@ -1,6 +1,6 @@
 # Security review - web application (WAR) 1.3
 
-**Addendum 1.3.1 (2026-09-17)** - GitHub code scanning (CodeQL, default suite) on the repository reported 43 alerts on 1.3; every one was fixed in code rather than dismissed. Details in the rows marked *1.3.1* below and in the change log.
+**Addendum 1.3.1 (2026-09-17)** - GitHub code scanning (CodeQL, default suite) on the repository reported 43 alerts on 1.3; every one was fixed in code rather than dismissed. Details in the rows marked *1.3.1* below and in the change log. The same day the tree and a running deployment were scanned with Semgrep, SpotBugs + FindSecBugs, Trivy, Retire.js, gitleaks and OWASP ZAP: [SECURITY-SCAN-REPORT-1.3.1.md](SECURITY-SCAN-REPORT-1.3.1.md) lists every finding with its fix or its rationale.
 
 Scope: the enterprise layer of the WAR (`tca.enterprise`, `AnalyzerServlet`, `enterprise.js`, bundled Swagger UI) and the shared API it builds on. Method: code review of every endpoint against the threats below, then automated checks in the functional suites (marked *tested*). Date: 2026-09-07.
 
@@ -23,7 +23,7 @@ Scope: the enterprise layer of the WAR (`tca.enterprise`, `AnalyzerServlet`, `en
 | Regular expression denial of service on uploads (*1.3.1*) | Package and BPD parsing and several rule patterns backtracked polynomially on crafted text (CodeQL `java/polynomial-redos`; 180 KB of `merge merge ...` held a worker for minutes on TCA-JS-001) | package.xml and BPD flows are parsed with linear scans (`Xml.openTag` / `Xml.elements`); every rule pattern runs over `TimedText` with a 2 s budget per script - a script that exhausts it gets an INFO "Rule skipped" finding and the analysis continues; TCA-JS-013 tightened | done, tested |
 | Open redirect (*1.3.1*) | The trailing-slash redirect of the root echoed the request URI (CodeQL `java/unvalidated-url-redirection`) | The target is built from the context and servlet paths | done |
 | Cross-site scripting | The UI builds HTML from server data | Every user-controlled value passes through the escaper; messages set through `textContent` | reviewed |
-| Clickjacking / content sniffing | | `X-Frame-Options: SAMEORIGIN`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: same-origin`, `Cache-Control: no-store` on API answers | done |
+| Clickjacking / content sniffing / script injection | | `X-Frame-Options: SAMEORIGIN`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: same-origin`, `Cache-Control: no-store` on API answers; *1.3.1*: `Content-Security-Policy` (same origin only, no inline scripts, no plug-ins, `frame-ancestors 'self'`) on every response of the WAR and of the desktop server | done, tested |
 | Information disclosure | | Passwords, API keys and tokens never returned by the API (`hasPassword` flags instead); user list, audit and metrics of workspaces admin-only; health and Prometheus metrics carry no user data | done, tested |
 | Secrets at rest | Repository passwords, API keys and SMTP credentials must be usable, so they are stored in clear | Owner-only file permissions on every enterprise file; documented reliance on file-system protection and platform encryption at rest | documented |
 | Account enumeration | Sign-up reveals whether an e-mail address exists | Accepted (usability); login does not reveal it | accepted |
@@ -39,4 +39,4 @@ Scope: the enterprise layer of the WAR (`tca.enterprise`, `AnalyzerServlet`, `en
 
 ## Dependencies
 
-Runtime: Mozilla Rhino (shaded, MPL 2.0). Browser: Bootstrap, Font Awesome Free, Chart.js, Swagger UI 5.17.14 (Apache 2.0), all bundled, no external requests. Compile-time only: the servlet API jars.
+Runtime: Mozilla Rhino (shaded, MPL 2.0). Browser: Bootstrap, Font Awesome Free, Chart.js, Swagger UI 5.33.0 (Apache 2.0), all bundled, no external requests. Compile-time only: the servlet API jars.
