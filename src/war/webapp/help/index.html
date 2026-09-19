@@ -225,7 +225,7 @@ curl -sf -H "Authorization: Bearer $TOKEN" "$BASE/api/report/$REPORT/verdict" ||
 <p><b>Can I move my rule settings to another installation?</b> Yes: export the settings or the policy as JSON and import it there, or in the desktop app.</p>
 <p><b>A report says the upload was discarded.</b> The server keeps only reports (option keepUploads=false); analyze the export again if you need diagrams or search.</p>
 <p><b>Where are the numbers in the health score from?</b> score = severity weight (Critical 100, Major 40, Minor 10, Info 2, or the weights of the policy) &times; rule impact (1..3); health = 100 &times; e<sup>-density / 40</sup> with density = total score / max(50, artifacts of the application).</p>
-<p class="text-secondary mt-5">TWX Code Analyzer - MIT License. Static analysis is advisory: confirm findings in the application context before changing production logic.</p>
+<p class="text-secondary mt-5">TWX Code Analyzer - Apache License 2.0, Dosvak LLC. Static analysis is advisory: confirm findings in the application context before changing production logic.</p>
 </div>
 </div>
 </div>

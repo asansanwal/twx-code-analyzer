@@ -4,7 +4,7 @@ Two automated suites (Python: urllib for the API, Playwright for the browser) ra
 
 | Suite | Target | Result |
 |---|---|---|
-| Enterprise mode | `twx-code-analyzer-jakarta.war` on Tomcat 10.1, context root `/twx-code-analyzer`; options `enterprise=true auth=builtin anonymous=true workers=2 quotaMb=60 userHeader=X-Test-User retentionDays=30 designerUrl=...`, SMTP to a local sink, webhook to a local receiver; Process Center = lab 192.168.1.242; Studio = simulator | 155 / 155 passed |
+| Enterprise mode | `twx-code-analyzer-jakarta.war` on Tomcat 10.1, context root `/twx-code-analyzer`; options `enterprise=true auth=builtin anonymous=true workers=2 quotaMb=60 userHeader=X-Test-User retentionDays=30 designerUrl=...`, SMTP to a local sink, webhook to a local receiver; Process Center = lab <process-center-host>; Studio = simulator | 155 / 155 passed |
 | Demo mode | `twx-code-analyzer.war` (javax) on Tomcat 9; options `demo=true retentionDays=30 quotaMb=1024 maxUploadMb=20 workers=2` | 27 / 27 passed |
 
 Failures: none

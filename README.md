@@ -8,7 +8,7 @@ Everything runs on your machine with the desktop app. Nothing is uploaded anywhe
 
 **Live demo: [https://twxca.com](https://twxca.com)** - the web application (version 1.3) running as a public demo. Without an account each browser gets a private, temporary workspace (purged after 30 days, rule settings read-only). Create an account to keep your analyses, define quality gates and policies, accept findings, import from your Process Center or Studio, and use the API with a personal access token; you can purge your data or delete the account at any time. Do not upload exports you are not allowed to store on a third-party server.
 
-License: MIT (attribution required, see [License](#license)).
+License: Apache-2.0 (attribution required, see [License](#license)). Part of the open-source BAW tooling of [Dosvak](https://github.com/dosvak).
 
 ## What it offers
 
@@ -267,9 +267,12 @@ The desktop app parses files locally and listens on 127.0.0.1 only (`serve ... -
 * [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) - deploying the WAR (Liberty, WebSphere, Tomcat; Docker; the layout of the live demo)
 * [docs/CHANGELOG.md](docs/CHANGELOG.md) - what changed in each version
 * [docs/BUILD-AND-SIGNING.md](docs/BUILD-AND-SIGNING.md) - reproducible build, packaging, signed Windows launcher
+* [process-app/README.md](process-app/README.md) - the analyzer as a BAW process application (TWX Code Analyzer 1.2, `TWXCA`): the engine embedded as a managed server file, analyses as process instances, dashboard with findings, explorer, diagrams, search, history, comparison and rules
 
 ## License
 
-MIT License. You may use, copy, modify and redistribute the software, including commercially, provided the copyright notice and the license text are kept in all copies or substantial portions (attribution). See [LICENSE](LICENSE).
+Apache License 2.0 - see [LICENSE](LICENSE) and [NOTICE](NOTICE). You may use, copy, modify and redistribute the software, including commercially, provided the copyright notice, the license and the NOTICE file are kept with every copy (attribution to Dosvak LLC). Versions up to 1.3.1 were published under the MIT license; that license continues to apply to those copies.
 
-Third-party components: Mozilla Rhino (MPL 2.0), Bootstrap (MIT), Font Awesome Free (CC BY 4.0 / SIL OFL 1.1 / MIT), Chart.js (MIT).
+Third-party components: Mozilla Rhino (MPL 2.0), Bootstrap (MIT), Font Awesome Free (CC BY 4.0 / SIL OFL 1.1 / MIT), Chart.js (MIT), Swagger UI (Apache 2.0).
+
+Published by [Dosvak LLC](https://dosvak.com), an IBM Business Partner (Silver, IBM Partner Plus). IBM, IBM Business Automation Workflow, IBM Business Process Manager and IBM Cloud Pak are trademarks or registered trademarks of International Business Machines Corporation; this project is not affiliated with, endorsed by or supported by IBM.
